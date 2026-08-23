@@ -19,7 +19,7 @@ function Badge({ status }) {
 const ACTION_LABELS = {
   code_generated: 'Code generated', code_used: 'Code used (nomination)', code_void: 'Code voided',
   agent_created: 'Agent created', agent_pin_reset: 'Agent PIN reset', agent_deactivated: 'Agent deactivated',
-  agent_reactivated: 'Agent reactivated', agent_renamed: 'Agent renamed', admin_login: 'Main admin login', agent_login: 'Agent login',
+  agent_reactivated: 'Agent reactivated', agent_renamed: 'Agent renamed', nomination_deleted: 'Nomination deleted', admin_login: 'Main admin login', agent_login: 'Agent login',
   main_admin_setup: 'Main admin PIN created', settings_updated: 'Settings updated',
 };
 function actorLabel(row) {
@@ -340,6 +340,16 @@ function NominationsTab() {
 
   useEffect(() => { fetch('/api/nominations').then(r => r.json()).then(d => { setNoms(d.nominations || []); setLoading(false); }); }, []);
 
+  async function deleteNomination(id, name) {
+    if (!confirm(`Permanently delete the nomination for "${name}"? This also deletes their photo. This cannot be undone.`)) return;
+    const res = await fetch(`/api/nominations/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Failed to delete'); return; }
+    toast('Nomination deleted');
+    setNoms(prev => prev.filter(n => n.id !== id));
+    setViewing(null);
+  }
+
   if (loading) return <Loading />;
 
   let list = [...noms];
@@ -380,7 +390,7 @@ function NominationsTab() {
                   <td>{n.section_label}</td>
                   <td>{n.nominator_name}<div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{n.nominator_phone}</div></td>
                   <td>{n.submitted_at ? new Date(n.submitted_at).toLocaleDateString() : ''}</td>
-                  <td><button className="small-btn" onClick={() => setViewing(n)}>View</button></td>
+                  <td><button className="small-btn" onClick={() => setViewing(n)}>View</button>{' '}<button className="small-btn danger" onClick={() => deleteNomination(n.id, n.nominee_name)}>Delete</button></td>
                 </tr>
               ))}
           </tbody>
@@ -398,7 +408,10 @@ function NominationsTab() {
             <div className="divider-label">nominator</div>
             <div style={{ fontSize: 13 }}>{viewing.nominator_name} · {viewing.nominator_phone} · {viewing.relation}</div>
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 10 }}>Code {viewing.code} · Submitted {new Date(viewing.submitted_at).toLocaleString()}</div>
-            <button className="btn btn-outline-dark" style={{ width: '100%', justifyContent: 'center', marginTop: 16 }} onClick={() => setViewing(null)}>Close</button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn btn-outline-dark" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setViewing(null)}>Close</button>
+              <button className="btn btn-burgundy" style={{ flex: 1, justifyContent: 'center', color: '#fff' }} onClick={() => deleteNomination(viewing.id, viewing.nominee_name)}>Delete</button>
+            </div>
           </div>
         </div>
       )}
