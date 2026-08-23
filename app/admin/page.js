@@ -19,7 +19,7 @@ function Badge({ status }) {
 const ACTION_LABELS = {
   code_generated: 'Code generated', code_used: 'Code used (nomination)', code_void: 'Code voided',
   agent_created: 'Agent created', agent_pin_reset: 'Agent PIN reset', agent_deactivated: 'Agent deactivated',
-  agent_reactivated: 'Agent reactivated', admin_login: 'Main admin login', agent_login: 'Agent login',
+  agent_reactivated: 'Agent reactivated', agent_renamed: 'Agent renamed', admin_login: 'Main admin login', agent_login: 'Agent login',
   main_admin_setup: 'Main admin PIN created', settings_updated: 'Settings updated',
 };
 function actorLabel(row) {
@@ -508,6 +508,14 @@ function AgentsTab() {
     if (!res.ok) { toast('Failed'); return; }
     toast(active ? 'Agent reactivated' : 'Agent deactivated'); load();
   }
+  async function renameAgent(id, oldName) {
+    const newName = prompt('New name for this agent:', oldName);
+    if (!newName || !newName.trim() || newName.trim() === oldName) return;
+    const res = await fetch(`/api/agents/${id}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }) });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Failed to rename'); return; }
+    toast('Agent renamed'); load();
+  }
 
   if (loading) return <Loading />;
 
@@ -543,6 +551,7 @@ function AgentsTab() {
                   <td>{a.total_codes} / {a.used_codes}</td>
                   <td>{a.last_login_at ? new Date(a.last_login_at).toLocaleString() : 'Never'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="small-btn" onClick={() => renameAgent(a.id, a.name)}>Rename</button>{' '}
                     <button className="small-btn" onClick={() => resetPin(a.id, a.name)}>Reset PIN</button>{' '}
                     {a.active
                       ? <button className="small-btn danger" onClick={() => toggleAgent(a.id, false)}>Deactivate</button>
