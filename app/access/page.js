@@ -55,9 +55,26 @@ export default function AccessPage() {
               <div className="banner banner-gold" style={{ marginTop: 16 }}>
                 🎫 Write your code down carefully — it can only be used <strong>once</strong>, for one nomination.
               </div>
-              <div className="banner banner-bad" style={{ marginTop: 12 }}>
-                ⚠️ Codes are only ever generated after payment is confirmed by a committee member or agent. Nobody can buy a code online by themselves — this keeps every entry honest.
+              {config?.online_sales_enabled ? (
+                <>
+                  <div className="banner banner-good" style={{ marginTop: 12 }}>
+                    💳 In a hurry? You can also buy a code yourself with MoMo or card and get it on screen instantly.
+                  </div>
+                  <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={() => router.push('/buy')}>
+                    Buy a code online →
+                  </button>
+                </>
+              ) : (
+                <div className="banner banner-bad" style={{ marginTop: 12 }}>
+                  ⚠️ Codes are only ever generated after payment is confirmed by a committee member or agent — this keeps every entry honest.
+                </div>
+              )}
+              <div className="banner banner-gold" style={{ marginTop: 12 }}>
+                🎁 The Anniversary Merit Awards (most improved, most hardworking, best teacher and so on) are nominated <strong>free</strong> — no code needed.
               </div>
+              <button className="btn btn-outline-dark" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={() => router.push('/nominate-free')}>
+                Go to free nominations →
+              </button>
             </div>
             <div className="panel panel-pad">
               <span className="section-tag">Check a code</span>

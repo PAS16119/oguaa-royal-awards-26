@@ -46,6 +46,7 @@ const NAV_TABS = [
   ['/', 'Home'],
   ['/access', 'Get Access'],
   ['/nominate', 'Nominate'],
+  ['/nominate-free', 'Free Awards'],
 ];
 
 export function Shell({ children }) {
@@ -82,7 +83,7 @@ export function Shell({ children }) {
         <div className="row">
           {NAV_TABS.map(([href, label]) => (
             <button key={href} className={pathname === href ? 'active' : ''} onClick={() => router.push(href)}>
-              {label.replace('Get ', '')}
+              {label.replace('Get ', '').replace('Free Awards', 'Free')}
             </button>
           ))}
         </div>

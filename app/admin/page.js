@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast } from '../components';
-import { SECTIONS } from '@/lib/categories';
+import { AwardsTab, PaymentsTab, ExtraSettings } from './manage';
 
 function sanitizeFile(s) {
   return (s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 60);
@@ -174,12 +174,14 @@ function MainAdminDashboard({ onLogout }) {
           <button className="btn btn-outline-dark" onClick={logout}>Log out</button>
         </div>
         <div className="admin-tabs">
-          {[['overview', 'Overview'], ['codes', 'Access Codes'], ['nominations', 'Nominations'], ['export', 'Export'], ['agents', 'Agents'], ['audit', 'Audit Trail'], ['settings', 'Settings']].map(([k, l]) => (
+          {[['overview', 'Overview'], ['awards', 'Awards'], ['codes', 'Access Codes'], ['payments', 'Online Sales'], ['nominations', 'Nominations'], ['export', 'Export'], ['agents', 'Agents'], ['audit', 'Audit Trail'], ['settings', 'Settings']].map(([k, l]) => (
             <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
           ))}
         </div>
         {tab === 'overview' && <OverviewTab />}
+        {tab === 'awards' && <AwardsTab />}
         {tab === 'codes' && <CodesTab role="main-admin" />}
+        {tab === 'payments' && <PaymentsTab />}
         {tab === 'nominations' && <NominationsTab />}
         {tab === 'export' && <ExportTab />}
         {tab === 'agents' && <AgentsTab />}
@@ -194,16 +196,19 @@ function OverviewTab() {
   const [noms, setNoms] = useState([]);
   const [codes, setCodes] = useState([]);
   const [config, setConfig] = useState(null);
+  const [sections, setSections] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const [n, c, cfg] = await Promise.all([
+      const [n, c, cfg, cat] = await Promise.all([
         fetch('/api/nominations').then(r => r.json()),
         fetch('/api/codes').then(r => r.json()),
         fetch('/api/config').then(r => r.json()),
+        fetch('/api/catalog').then(r => r.json()),
       ]);
       setNoms(n.nominations || []); setCodes(c.codes || []); setConfig(cfg.config);
+      setSections(cat.sections || []);
       setLoading(false);
     })();
   }, []);
@@ -213,20 +218,24 @@ function OverviewTab() {
   const used = codes.filter(c => c.status === 'used').length;
   const unused = codes.filter(c => c.status === 'unused').length;
   const revenue = used * price;
-  const bySection = {}; SECTIONS.forEach(s => bySection[s.key] = 0);
+  const bySection = {}; sections.forEach(s => bySection[s.key] = 0);
   noms.forEach(n => { bySection[n.section_key] = (bySection[n.section_key] || 0) + 1; });
+  const paidNoms = noms.filter(n => (n.track || 'paid') === 'paid').length;
+  const freeNoms = noms.filter(n => n.track === 'free').length;
 
   return (
     <div>
       <div className="kpi-grid">
         <div className="kpi"><div className="n">{noms.length}</div><div className="l">Total Nominations</div></div>
+        <div className="kpi"><div className="n">{paidNoms}</div><div className="l">Paid Track</div></div>
+        <div className="kpi"><div className="n">{freeNoms}</div><div className="l">Free Track</div></div>
         <div className="kpi"><div className="n">{codes.length}</div><div className="l">Codes Issued</div></div>
         <div className="kpi"><div className="n">{unused}</div><div className="l">Unused / Unsold</div></div>
         <div className="kpi"><div className="n">GH₵{revenue}</div><div className="l">Confirmed Revenue (used codes)</div></div>
       </div>
       <div className="panel panel-pad">
         <h3 style={{ marginTop: 0 }}>Nominations by group</h3>
-        {SECTIONS.map(s => (
+        {sections.map(s => (
           <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <div style={{ width: 170, fontSize: 13, fontWeight: 600 }}>{s.emoji} {s.label}</div>
             <div style={{ flex: 1, background: 'var(--parchment-2)', borderRadius: 6, height: 10, overflow: 'hidden' }}>
@@ -336,6 +345,7 @@ function NominationsTab() {
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const [sortBy, setSortBy] = useState('section');
+  const [trackFilter, setTrackFilter] = useState('');
   const [viewing, setViewing] = useState(null);
 
   useEffect(() => { fetch('/api/nominations').then(r => r.json()).then(d => { setNoms(d.nominations || []); setLoading(false); }); }, []);
@@ -352,7 +362,14 @@ function NominationsTab() {
 
   if (loading) return <Loading />;
 
+  // Groups come from the nominations themselves, so a group the admin adds
+  // later shows up here without any code change.
+  const groups = [];
+  noms.forEach(n => { if (!groups.some(g => g.key === n.section_key)) groups.push({ key: n.section_key, label: n.section_label || n.section_key, track: n.track || 'paid' }); });
+  groups.sort((a, b) => (a.track + a.label).localeCompare(b.track + b.label));
+
   let list = [...noms];
+  if (trackFilter) list = list.filter(n => (n.track || 'paid') === trackFilter);
   if (sectionFilter) list = list.filter(n => n.section_key === sectionFilter);
   if (search) {
     const q = search.toLowerCase();
@@ -373,21 +390,27 @@ function NominationsTab() {
           <option value="recent">Sort: Most recent</option>
         </select>
       </div>
+      <div className="tag-row" style={{ marginBottom: 10 }}>
+        <button className={`filter-chip ${trackFilter === '' ? 'active' : ''}`} onClick={() => setTrackFilter('')}>All tracks ({noms.length})</button>
+        <button className={`filter-chip ${trackFilter === 'paid' ? 'active' : ''}`} onClick={() => setTrackFilter('paid')}>💰 Paid ({noms.filter(n => (n.track || 'paid') === 'paid').length})</button>
+        <button className={`filter-chip ${trackFilter === 'free' ? 'active' : ''}`} onClick={() => setTrackFilter('free')}>🎁 Free ({noms.filter(n => n.track === 'free').length})</button>
+      </div>
       <div className="tag-row" style={{ marginBottom: 16 }}>
-        <button className={`filter-chip ${sectionFilter === '' ? 'active' : ''}`} onClick={() => setSectionFilter('')}>All ({noms.length})</button>
-        {SECTIONS.map(s => <button key={s.key} className={`filter-chip ${sectionFilter === s.key ? 'active' : ''}`} onClick={() => setSectionFilter(s.key)}>{s.emoji} {s.label} ({noms.filter(n => n.section_key === s.key).length})</button>)}
+        <button className={`filter-chip ${sectionFilter === '' ? 'active' : ''}`} onClick={() => setSectionFilter('')}>All groups</button>
+        {groups.map(g => <button key={g.key} className={`filter-chip ${sectionFilter === g.key ? 'active' : ''}`} onClick={() => setSectionFilter(g.key)}>{g.label} ({noms.filter(n => n.section_key === g.key).length})</button>)}
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Photo</th><th>Nominee</th><th>Category</th><th>Group</th><th>Nominator</th><th>Submitted</th><th></th></tr></thead>
+          <thead><tr><th>Photo</th><th>Nominee</th><th>Category</th><th>Group</th><th>Track</th><th>Nominator</th><th>Submitted</th><th></th></tr></thead>
           <tbody>
-            {list.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No nominations found.</td></tr> :
+            {list.length === 0 ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No nominations found.</td></tr> :
               list.map(n => (
                 <tr key={n.id}>
-                  <td><img className="thumb" src={n.photo_url} alt="" /></td>
+                  <td>{n.photo_url ? <img className="thumb" src={n.photo_url} alt="" /> : <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>—</span>}</td>
                   <td><strong>{n.nominee_name}</strong>{n.nominee_class && <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{n.nominee_class}</div>}</td>
                   <td>{n.category}</td>
                   <td>{n.section_label}</td>
+                  <td><span className={`badge ${n.track === 'free' ? 'badge-unused' : 'badge-used'}`}>{n.track === 'free' ? 'free' : 'paid'}</span></td>
                   <td>{n.nominator_name}<div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{n.nominator_phone}</div></td>
                   <td>{n.submitted_at ? new Date(n.submitted_at).toLocaleDateString() : ''}</td>
                   <td><button className="small-btn" onClick={() => setViewing(n)}>View</button>{' '}<button className="small-btn danger" onClick={() => deleteNomination(n.id, n.nominee_name)}>Delete</button></td>
@@ -399,7 +422,7 @@ function NominationsTab() {
       {viewing && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setViewing(null)}>
           <div className="panel panel-pad modal-box">
-            <img src={viewing.photo_url} alt="" style={{ width: '100%', borderRadius: 12, marginBottom: 14 }} />
+            {viewing.photo_url && <img src={viewing.photo_url} alt="" style={{ width: '100%', borderRadius: 12, marginBottom: 14 }} />}
             <h3 style={{ margin: '0 0 4px' }}>{viewing.nominee_name}</h3>
             <div style={{ color: 'var(--ink-soft)', fontSize: 13, marginBottom: 10 }}>{viewing.category} · {viewing.section_label}</div>
             {viewing.nominee_class && <div style={{ fontSize: 13, marginBottom: 4 }}><strong>Class:</strong> {viewing.nominee_class}</div>}
@@ -407,7 +430,7 @@ function NominationsTab() {
             <div style={{ fontSize: 13, margin: '10px 0', lineHeight: 1.6 }}><strong>Why:</strong> {viewing.reason}</div>
             <div className="divider-label">nominator</div>
             <div style={{ fontSize: 13 }}>{viewing.nominator_name} · {viewing.nominator_phone} · {viewing.relation}</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 10 }}>Code {viewing.code} · Submitted {new Date(viewing.submitted_at).toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 10 }}>{viewing.track === 'free' ? 'Free nomination' : `Code ${viewing.code}`} · Submitted {new Date(viewing.submitted_at).toLocaleString()}</div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button className="btn btn-outline-dark" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setViewing(null)}>Close</button>
               <button className="btn btn-burgundy" style={{ flex: 1, justifyContent: 'center', color: '#fff' }} onClick={() => deleteNomination(viewing.id, viewing.nominee_name)}>Delete</button>
@@ -428,25 +451,33 @@ function ExportTab() {
     const wb = XLSX.utils.book_new();
     const allRows = noms.map(n => ({
       'Group': n.section_label, 'Category': n.category, 'Nominee': n.nominee_name, 'Class/Form': n.nominee_class || '', 'House/Dept': n.nominee_house || '',
-      'Why nominated': n.reason || '', 'Nominator': n.nominator_name, 'Nominator Phone': n.nominator_phone, 'Relationship': n.relation || '',
-      'Access Code': n.code, 'Submitted At': n.submitted_at ? new Date(n.submitted_at).toLocaleString() : '', 'Photo URL': n.photo_url || '', 'Tracking ID': n.id,
+      'Track': n.track === 'free' ? 'Free' : 'Paid',
+      'Why nominated': n.reason || '', 'Nominator': n.nominator_name, 'Nominator Phone': n.nominator_phone, 'Relationship': n.relation || n.nominator_role || '',
+      'Access Code': n.code || '', 'Submitted At': n.submitted_at ? new Date(n.submitted_at).toLocaleString() : '', 'Photo URL': n.photo_url || '', 'Tracking ID': n.id,
     }));
     const wsAll = XLSX.utils.json_to_sheet(allRows);
-    wsAll['!cols'] = [{ wch: 22 }, { wch: 34 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 40 }, { wch: 24 }];
+    wsAll['!cols'] = [{ wch: 22 }, { wch: 34 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 8 }, { wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 40 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, wsAll, 'All Nominations');
-    SECTIONS.forEach(s => {
+    const groups = [];
+    noms.forEach(n => { if (!groups.some(g => g.key === n.section_key)) groups.push({ key: n.section_key, label: n.section_label || n.section_key }); });
+    groups.forEach(s => {
       const rows = noms.filter(n => n.section_key === s.key).map(n => ({
         'Category': n.category, 'Nominee': n.nominee_name, 'Class/Form': n.nominee_class || '', 'House/Dept': n.nominee_house || '',
-        'Why nominated': n.reason || '', 'Nominator': n.nominator_name, 'Nominator Phone': n.nominator_phone, 'Submitted At': n.submitted_at ? new Date(n.submitted_at).toLocaleString() : '',
+        'Why nominated': n.reason || '', 'Nominator': n.nominator_name, 'Nominator Phone': n.nominator_phone, 'Track': n.track === 'free' ? 'Free' : 'Paid', 'Submitted At': n.submitted_at ? new Date(n.submitted_at).toLocaleString() : '',
       }));
       if (rows.length === 0) return;
       const ws = XLSX.utils.json_to_sheet(rows);
-      ws['!cols'] = [{ wch: 34 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 18 }];
-      XLSX.utils.book_append_sheet(wb, ws, s.label.slice(0, 31));
+      ws['!cols'] = [{ wch: 34 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 8 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws, String(s.label).replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31));
     });
-    const summary = SECTIONS.map(s => ({ 'Group': s.label, 'Nominations Received': noms.filter(n => n.section_key === s.key).length, 'Categories Available': s.awards.length }));
+    const summary = groups.map(s => ({
+      'Group': s.label,
+      'Nominations Received': noms.filter(n => n.section_key === s.key).length,
+      'Paid': noms.filter(n => n.section_key === s.key && (n.track || 'paid') === 'paid').length,
+      'Free': noms.filter(n => n.section_key === s.key && n.track === 'free').length,
+    }));
     const wsSum = XLSX.utils.json_to_sheet(summary);
-    wsSum['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }];
+    wsSum['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 10 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, wsSum, 'Summary');
     XLSX.writeFile(wb, 'Oguaa_Royal_Awards_Nominations.xlsx');
     toast('Excel file downloaded');
@@ -654,6 +685,7 @@ function SettingsTab() {
         <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={save}>Save settings</button>
         {msg && <div className={`banner ${msg.ok ? 'banner-good' : 'banner-bad'}`} style={{ marginTop: 12 }}>{msg.text}</div>}
       </div>
+      <ExtraSettings />
       <div className="panel panel-pad" style={{ maxWidth: 560 }}>
         <h3 style={{ marginTop: 0 }}>Change main admin PIN</h3>
         <div className="field"><label>Current PIN</label><input type="password" className="mono" value={curPin} onChange={e => setCurPin(e.target.value)} /></div>

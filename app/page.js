@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast } from './components';
-import { SECTIONS, TOTAL_AWARDS } from '@/lib/categories';
 
 function fmtDate(d) {
   if (!d) return '';
@@ -14,15 +13,23 @@ export default function HomePage() {
   const router = useRouter();
   const [config, setConfig] = useState(null);
   const [count, setCount] = useState(null);
+  const [sections, setSections] = useState([]);
 
   useEffect(() => {
     fetch('/api/public/summary').then(r => r.json()).then(d => {
       setConfig(d.config);
       setCount(d.nominationCount);
     }).catch(() => {});
+    fetch('/api/catalog').then(r => r.json()).then(d => setSections(d.sections || [])).catch(() => {});
   }, []);
 
   const price = config?.price_ghs ?? 10;
+  const paidSections = sections.filter(s => s.track === 'paid');
+  const freeSections = sections.filter(s => s.track === 'free');
+  const PAID_AWARDS = paidSections.reduce((n, s) => n + s.awards.filter(a => a.nominable).length, 0);
+  const FREE_AWARDS = freeSections.reduce((n, s) => n + s.awards.filter(a => a.nominable).length, 0);
+  const TOTAL_AWARDS = PAID_AWARDS + FREE_AWARDS;
+  const freeOpen = config ? config.free_enabled !== false : true;
 
   let statusBanner = null;
   if (config?.open_date || config?.close_date) {
@@ -45,15 +52,21 @@ export default function HomePage() {
         <div className="hero-inner">
           <span className="eyebrow">✦ Anniversary Edition · {TOTAL_AWARDS} Royal Titles</span>
           <h1>Nominate someone for a <em>royal</em> title this anniversary.</h1>
-          <p className="lede">Junior & senior students, teachers, clubs and houses — {TOTAL_AWARDS} categories are open for nomination. GH₵{price} per nomination unlocks one entry.</p>
+          <p className="lede">
+            Two ways to take part. The <strong>Royal Awards</strong> ({PAID_AWARDS} popular titles) need an access code at GH₵{price} each.
+            The <strong>Anniversary Merit Awards</strong> ({FREE_AWARDS} titles) are nominated completely free.
+          </p>
           <div className="hero-cta">
-            <button className="btn btn-gold" onClick={() => router.push('/access')}>How to get an access code →</button>
+            {config?.online_sales_enabled
+              ? <button className="btn btn-gold" onClick={() => router.push('/buy')}>Buy an access code →</button>
+              : <button className="btn btn-gold" onClick={() => router.push('/access')}>How to get an access code →</button>}
+            {freeOpen && <button className="btn btn-ghost" onClick={() => router.push('/nominate-free')}>Nominate free →</button>}
             <button className="btn btn-ghost" onClick={() => router.push('/nominate')}>I already have a code</button>
           </div>
           {statusBanner}
           <div className="stat-strip">
             <div className="stat"><div className="n">{TOTAL_AWARDS}</div><div className="l">Award Categories</div></div>
-            <div className="stat"><div className="n">{SECTIONS.length}</div><div className="l">Recipient Groups</div></div>
+            <div className="stat"><div className="n">{sections.length}</div><div className="l">Recipient Groups</div></div>
             <div className="stat"><div className="n">GH₵{price}</div><div className="l">Per Nomination</div></div>
             <div className="stat"><div className="n">{count === null ? '—' : count}</div><div className="l">Nominations So Far</div></div>
           </div>
@@ -66,15 +79,15 @@ export default function HomePage() {
             <div>
               <span className="section-tag">The Titles</span>
               <h2>Browse every category</h2>
-              <div className="sub">Grouped by recipient type, exactly as they'll appear on the nomination form.</div>
+              <div className="sub">Grouped by recipient type, exactly as they'll appear on the nomination form. Paid groups need a code; free groups do not.</div>
             </div>
           </div>
           <div className="cat-grid">
-            {SECTIONS.map(s => (
+            {sections.map(s => (
               <div className="cat-card" key={s.key}>
                 <div className="icon">{s.emoji}</div>
                 <h3>{s.label}</h3>
-                <div className="cnt">{s.awards.length} awards</div>
+                <div className="cnt">{s.awards.length} awards · {s.track === 'free' ? 'free' : `GH₵${price}`}</div>
                 <div className="bar" style={{ background: s.color }} />
               </div>
             ))}
@@ -89,11 +102,14 @@ export default function HomePage() {
               <span className="section-tag">How it works</span>
               <h2 style={{ margin: '6px 0 16px' }}>Three simple steps</h2>
               <ol style={{ paddingLeft: 18, color: 'var(--ink-soft)', lineHeight: 1.9, fontSize: '14.5px' }}>
-                <li><strong style={{ color: 'var(--ink)' }}>Pay GH₵{price}</strong> in person — cash or MoMo — to a committee member or registered sales agent.</li>
-                <li><strong style={{ color: 'var(--ink)' }}>They generate your access code</strong> on the spot, from the official system, once payment is confirmed.</li>
-                <li><strong style={{ color: 'var(--ink)' }}>Fill the nomination form</strong> — name, category, a good photo, and why they deserve it.</li>
+                <li><strong style={{ color: 'var(--ink)' }}>Royal Awards — pay GH₵{price}</strong>{config?.online_sales_enabled ? ' online with MoMo or card, or in person to a committee member or sales agent.' : ' in person — cash or MoMo — to a committee member or registered sales agent.'}</li>
+                <li><strong style={{ color: 'var(--ink)' }}>You get an access code</strong> — one code, one nomination. Enter it on the nomination form.</li>
+                <li><strong style={{ color: 'var(--ink)' }}>Merit Awards — nominate free.</strong> No code, no payment. Just your name and number, so each person votes once per award.</li>
               </ol>
-              <button className="btn btn-dark" onClick={() => router.push('/access')}>Learn more →</button>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="btn btn-dark" onClick={() => router.push('/access')}>Paid awards →</button>
+                <button className="btn btn-outline-dark" onClick={() => router.push('/nominate-free')}>Free awards →</button>
+              </div>
             </div>
             <div style={{ flex: 1, minWidth: 180 }}>
               <Seal id="home" caption="Every access code is uniquely sealed" />

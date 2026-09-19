@@ -1,18 +1,20 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast } from '../components';
-import { SECTIONS } from '@/lib/categories';
 
 export default function NominatePage() {
   const router = useRouter();
+  const [sections, setSections] = useState(null);
+  const [config, setConfig] = useState(null);
+
   const [unlockCode, setUnlockCode] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
   const [unlocking, setUnlocking] = useState(false);
-  const [unlocked, setUnlocked] = useState(null); // code string once unlocked
-  const [submitted, setSubmitted] = useState(null); // {nomineeName, category, sectionLabel, id}
+  const [unlocked, setUnlocked] = useState(null);
+  const [submitted, setSubmitted] = useState(null);
 
-  const [category, setCategory] = useState('');
+  const [awardId, setAwardId] = useState('');
   const [nomineeName, setNomineeName] = useState('');
   const [nomineeClass, setNomineeClass] = useState('');
   const [nomineeHouse, setNomineeHouse] = useState('');
@@ -25,6 +27,13 @@ export default function NominatePage() {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/catalog?track=paid').then(r => r.json()).then(d => setSections(d.sections || [])).catch(() => setSections([]));
+    fetch('/api/public/summary').then(r => r.json()).then(d => setConfig(d.config)).catch(() => {});
+  }, []);
+
+  const selected = (sections || []).flatMap(s => s.awards.map(a => ({ ...a, section: s }))).find(a => a.id === awardId);
 
   async function unlockForm() {
     const raw = unlockCode.trim().toUpperCase();
@@ -59,7 +68,7 @@ export default function NominatePage() {
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         setPhotoDataUrl(canvas.toDataURL('image/jpeg', 0.85));
-        setErrors(e => ({ ...e, photo: false }));
+        setErrors(er => ({ ...er, photo: false }));
       };
       img.src = ev.target.result;
     };
@@ -68,7 +77,7 @@ export default function NominatePage() {
 
   async function submitNomination() {
     const errs = {};
-    if (!category) errs.category = true;
+    if (!awardId) errs.category = true;
     if (!nomineeName.trim()) errs.name = true;
     if (!photoDataUrl) errs.photo = true;
     if (!reason.trim()) errs.reason = true;
@@ -87,13 +96,10 @@ export default function NominatePage() {
       const uploadData = await uploadRes.json();
       if (!uploadRes.ok) throw new Error(uploadData.error || 'Photo upload failed');
 
-      const [sectionKey, award] = category.split('|||');
-      const section = SECTIONS.find(s => s.key === sectionKey);
-
       const res = await fetch('/api/nominations', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code: unlocked, sectionKey, sectionLabel: section.label, category: award,
+          track: 'paid', code: unlocked, awardId,
           nomineeName: nomineeName.trim(), nomineeClass: nomineeClass.trim(), nomineeHouse: nomineeHouse.trim(),
           reason: reason.trim(), photoUrl: uploadData.url,
           nominatorName: yourName.trim(), nominatorPhone: yourPhone.trim(), relation,
@@ -102,7 +108,12 @@ export default function NominatePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not submit nomination');
 
-      setSubmitted({ nomineeName: nomineeName.trim(), category: award, sectionLabel: section.label, id: data.id });
+      setSubmitted({
+        nomineeName: nomineeName.trim(),
+        category: selected?.name,
+        sectionLabel: selected?.section?.label,
+        id: data.id,
+      });
     } catch (e) {
       toast(e.message || 'Something went wrong — please try again');
     }
@@ -155,8 +166,17 @@ export default function NominatePage() {
               </button>
               {unlockErr && <div className="banner banner-bad" style={{ marginTop: 14 }}>{unlockErr}</div>}
               <div className="divider-label">no code yet?</div>
+              {config?.online_sales_enabled && (
+                <button className="btn btn-dark" style={{ width: '100%', justifyContent: 'center', marginBottom: 10 }} onClick={() => router.push('/buy')}>
+                  Buy a code online (MoMo / card) →
+                </button>
+              )}
               <button className="btn btn-outline-dark" style={{ width: '100%', justifyContent: 'center' }} onClick={() => router.push('/access')}>
-                How to get an access code
+                Get a code from an agent
+              </button>
+              <div className="divider-label">or</div>
+              <button className="btn btn-outline-dark" style={{ width: '100%', justifyContent: 'center' }} onClick={() => router.push('/nominate-free')}>
+                Free merit-award nominations →
               </button>
             </div>
           </div>
@@ -180,11 +200,11 @@ export default function NominatePage() {
           <div className="panel panel-pad">
             <div className={`field ${errors.category ? 'invalid' : ''}`}>
               <label>Award category *</label>
-              <select value={category} onChange={e => setCategory(e.target.value)}>
-                <option value="">Select a category…</option>
-                {SECTIONS.map(s => (
-                  <optgroup key={s.key} label={`${s.emoji} ${s.label}`}>
-                    {s.awards.map(a => <option key={a} value={`${s.key}|||${a}`}>{a}</option>)}
+              <select value={awardId} onChange={e => setAwardId(e.target.value)}>
+                <option value="">{sections === null ? 'Loading categories…' : 'Select a category…'}</option>
+                {(sections || []).map(s => (
+                  <optgroup key={s.key} label={`${s.emoji || ''} ${s.label}`}>
+                    {s.awards.filter(a => a.nominable).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </optgroup>
                 ))}
               </select>
@@ -214,11 +234,11 @@ export default function NominatePage() {
                 {photoDataUrl
                   ? <img src={photoDataUrl} alt="Preview" />
                   : <div className="ph-empty">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A5478" strokeWidth="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" strokeLinecap="round" /></svg>
-                      <br />Tap to upload a clear passport-style photo<br /><span style={{ fontSize: 11 }}>JPG or PNG · auto-optimized for flyers</span>
+                      Tap to upload a clear passport-style photo<br />
+                      <span style={{ fontSize: 11 }}>JPG or PNG · auto-optimized for flyers</span>
                     </div>}
               </div>
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" style={{ display: 'none' }} onChange={handlePhoto} />
               {errors.photo && <div className="err-msg">Please upload a photo of the nominee.</div>}
             </div>
 
