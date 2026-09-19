@@ -1,20 +1,20 @@
 import { sql } from '@/lib/db';
-import { requireMainAdmin } from '@/lib/session';
-import { logAudit } from '@/lib/audit';
+import { requireAdminLevel } from '@/lib/session';
+import { logAudit, actorFromSession } from '@/lib/audit';
 import { slugifyAwardId } from '@/lib/catalog';
 
 export const dynamic = 'force-dynamic';
 
 async function guard() {
-  const session = await requireMainAdmin();
+  const session = await requireAdminLevel();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
-  return null;
+  return session;
 }
 
 // POST — add an award. { sectionKey, name, notes?, nominable? }
 // Also accepts { sectionKey, bulk: "one award per line" } to paste a whole list.
 export async function POST(req) {
-  const denied = await guard(); if (denied) return denied;
+  const g = await guard(); if (g instanceof Response) return g; const session = g;
   const b = await req.json();
 
   const secRows = await sql`SELECT * FROM award_sections WHERE key = ${b.sectionKey}`;
@@ -37,13 +37,13 @@ export async function POST(req) {
     `;
     created.push({ id, name });
   }
-  await logAudit({ type: 'main-admin' }, 'award_created', { sectionKey: b.sectionKey, count: created.length, names });
+  await logAudit(actorFromSession(session), 'award_created', { sectionKey: b.sectionKey, count: created.length, names });
   return Response.json({ ok: true, created });
 }
 
 // PATCH — edit one award. { id, name?, notes?, nominable?, active?, move? }
 export async function PATCH(req) {
-  const denied = await guard(); if (denied) return denied;
+  const g = await guard(); if (g instanceof Response) return g; const session = g;
   const b = await req.json();
   const rows = await sql`SELECT * FROM awards WHERE id = ${b.id}`;
   if (rows.length === 0) return Response.json({ error: 'Award not found.' }, { status: 404 });
@@ -71,13 +71,13 @@ export async function PATCH(req) {
       section_key = ${b.sectionKey ?? cur.section_key}
     WHERE id = ${b.id}
   `;
-  await logAudit({ type: 'main-admin' }, 'award_updated', { id: b.id });
+  await logAudit(actorFromSession(session), 'award_updated', { id: b.id });
   return Response.json({ ok: true });
 }
 
 // DELETE — remove an award. Blocked once nominations exist for it.
 export async function DELETE(req) {
-  const denied = await guard(); if (denied) return denied;
+  const g = await guard(); if (g instanceof Response) return g; const session = g;
   const { id } = await req.json();
   const rows = await sql`SELECT * FROM awards WHERE id = ${id}`;
   if (rows.length === 0) return Response.json({ error: 'Award not found.' }, { status: 404 });
@@ -89,6 +89,6 @@ export async function DELETE(req) {
     }, { status: 400 });
   }
   await sql`DELETE FROM awards WHERE id = ${id}`;
-  await logAudit({ type: 'main-admin' }, 'award_deleted', { id, name: rows[0].name });
+  await logAudit(actorFromSession(session), 'award_deleted', { id, name: rows[0].name });
   return Response.json({ ok: true });
 }

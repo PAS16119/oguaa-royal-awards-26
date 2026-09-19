@@ -1,6 +1,6 @@
 import { sql } from '@/lib/db';
 import { requireAnySession } from '@/lib/session';
-import { logAudit } from '@/lib/audit';
+import { logAudit, actorFromSession } from '@/lib/audit';
 import { genAccessCode } from '@/lib/codegen';
 
 // GET: main admin sees every code; an agent only sees the codes they generated.
@@ -8,7 +8,7 @@ export async function GET() {
   const session = await requireAnySession();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-  const rows = session.role === 'main-admin'
+  const rows = (session.role === 'main-admin' || session.role === 'co-admin')
     ? await sql`SELECT * FROM codes ORDER BY created_at DESC`
     : await sql`SELECT * FROM codes WHERE issued_by_type = 'agent' AND issued_by_id = ${session.id} ORDER BY created_at DESC`;
 
@@ -25,11 +25,11 @@ export async function POST(req) {
   const n = Math.max(1, Math.min(50, parseInt(count) || 1));
 
   const issuedByType = session.role;
-  const issuedById = session.role === 'agent' ? session.id : null;
-  const issuedByName = session.role === 'agent' ? session.name : 'Main Admin';
-  const actor = session.role === 'agent'
-    ? { type: 'agent', id: session.id, name: session.name }
-    : { type: 'main-admin' };
+  const issuedById = (session.role === 'agent' || session.role === 'co-admin') ? session.id : null;
+  const issuedByName = session.role === 'agent' ? session.name
+    : session.role === 'co-admin' ? `Co-Admin · ${session.name}`
+    : 'Main Admin';
+  const actor = actorFromSession(session);
 
   const out = [];
   for (let i = 0; i < n; i++) {

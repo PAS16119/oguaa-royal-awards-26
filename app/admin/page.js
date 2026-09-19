@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast } from '../components';
-import { AwardsTab, PaymentsTab, ExtraSettings } from './manage';
+import { AwardsTab, PaymentsTab, ExtraSettings, CoAdminsTab } from './manage';
 
 function sanitizeFile(s) {
   return (s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 60);
@@ -21,10 +21,18 @@ const ACTION_LABELS = {
   agent_created: 'Agent created', agent_pin_reset: 'Agent PIN reset', agent_deactivated: 'Agent deactivated',
   agent_reactivated: 'Agent reactivated', agent_renamed: 'Agent renamed', nomination_deleted: 'Nomination deleted', admin_login: 'Main admin login', agent_login: 'Agent login',
   main_admin_setup: 'Main admin PIN created', settings_updated: 'Settings updated',
+  coadmin_created: 'Co-Admin created', coadmin_pin_reset: 'Co-Admin PIN reset', coadmin_deactivated: 'Co-Admin deactivated',
+  coadmin_reactivated: 'Co-Admin reactivated', coadmin_renamed: 'Co-Admin renamed', coadmin_login: 'Co-Admin login',
+  award_group_created: 'Award group added', award_group_updated: 'Award group edited', award_group_deleted: 'Award group deleted',
+  award_created: 'Award added', award_updated: 'Award edited', award_deleted: 'Award deleted',
+  free_nomination: 'Free nomination submitted', codes_purchased_online: 'Codes purchased online',
 };
 function actorLabel(row) {
   if (row.actor_type === 'main-admin') return 'Main Admin';
+  if (row.actor_type === 'co-admin') return `Co-Admin · ${row.actor_name} (${row.actor_id})`;
   if (row.actor_type === 'agent') return `Agent · ${row.actor_name} (${row.actor_id})`;
+  if (row.actor_type === 'online') return 'Online purchase';
+  if (row.actor_type === 'public') return row.actor_name ? `Public · ${row.actor_name}` : 'Public';
   return 'System';
 }
 
@@ -71,8 +79,8 @@ export default function AdminPage() {
 
   return (
     <Shell>
-      {session.role === 'main-admin'
-        ? <MainAdminDashboard onLogout={() => setSession(null)} />
+      {session.role === 'main-admin' || session.role === 'co-admin'
+        ? <MainAdminDashboard role={session.role} onLogout={() => setSession(null)} />
         : <AgentDashboard session={session} onLogout={() => setSession(null)} />}
       <Toast />
     </Shell>
@@ -87,14 +95,15 @@ function LoginGate({ loginMode, setLoginMode, adminExists, setAdminExists, onLog
       <div className="panel panel-pad">
         <Seal id="gate" />
         <h2 style={{ margin: '14px 0 4px', textAlign: 'center' }}>Committee &amp; agent access</h2>
-        <p style={{ color: 'var(--ink-soft)', fontSize: '12.5px', textAlign: 'center', marginBottom: 20 }}>Role-based access — main admin and sales agents sign in separately.</p>
+        <p style={{ color: 'var(--ink-soft)', fontSize: '12.5px', textAlign: 'center', marginBottom: 20 }}>Role-based access — main admin, co-admins and sales agents sign in separately.</p>
         <div className="pill-tabs" style={{ marginBottom: 20 }}>
           <button className={loginMode === 'admin' ? 'active' : ''} onClick={() => setLoginMode('admin')}>Main Admin</button>
+          <button className={loginMode === 'coadmin' ? 'active' : ''} onClick={() => setLoginMode('coadmin')}>Co-Admin</button>
           <button className={loginMode === 'agent' ? 'active' : ''} onClick={() => setLoginMode('agent')}>Sales Agent</button>
         </div>
-        {loginMode === 'admin'
-          ? (adminExists ? <AdminLoginForm onLoggedIn={onLoggedIn} /> : <AdminSetupForm onDone={() => { setAdminExists(true); }} onLoggedIn={onLoggedIn} />)
-          : <AgentLoginForm onLoggedIn={onLoggedIn} />}
+        {loginMode === 'admin' && (adminExists ? <AdminLoginForm onLoggedIn={onLoggedIn} /> : <AdminSetupForm onDone={() => { setAdminExists(true); }} onLoggedIn={onLoggedIn} />)}
+        {loginMode === 'coadmin' && <CoAdminLoginForm onLoggedIn={onLoggedIn} />}
+        {loginMode === 'agent' && <AgentLoginForm onLoggedIn={onLoggedIn} />}
         <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', marginTop: 14, background: 'var(--parchment-2)', color: 'var(--ink)' }} onClick={() => router.push('/')}>
           ← Back to site
         </button>
@@ -159,22 +168,50 @@ function AgentLoginForm({ onLoggedIn }) {
   );
 }
 
+function CoAdminLoginForm({ onLoggedIn }) {
+  const [id, setId] = useState(''); const [pin, setPin] = useState(''); const [err, setErr] = useState('');
+  async function submit() {
+    const res = await fetch('/api/auth/coadmin-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adminId: id, pin }) });
+    const data = await res.json();
+    if (!res.ok) { setErr(data.error || 'Login failed.'); return; }
+    onLoggedIn({ role: 'co-admin', id: data.id, name: data.name });
+  }
+  return (
+    <div>
+      <div className="field"><label>Co-Admin ID</label><input type="text" className="mono" style={{ textTransform: 'uppercase' }} placeholder="ADM-XXXX" value={id} onChange={e => setId(e.target.value)} /></div>
+      <div className="field"><label>PIN</label><input type="password" className="mono" value={pin} onChange={e => setPin(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} /></div>
+      <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={submit}>Enter co-admin dashboard →</button>
+      {err && <div className="banner banner-bad" style={{ marginTop: 12 }}>{err}</div>}
+    </div>
+  );
+}
+
 /* ========================== MAIN ADMIN DASHBOARD ========================== */
 const STORAGE_NOTE_CAP_MB = null; // no artificial cap anymore — real Postgres + Blob storage
 
-function MainAdminDashboard({ onLogout }) {
-  const [tab, setTab] = useState('overview');
+function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
+  const isMainAdmin = role === 'main-admin';
+  const defaultTab = 'overview';
+  const [tab, setTab] = useState(defaultTab);
   async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); onLogout(); }
+
+  const tabs = [
+    ['overview', 'Overview'], ['awards', 'Awards'], ['codes', 'Access Codes'],
+    ['payments', 'Online Sales'], ['nominations', 'Nominations'], ['export', 'Export'],
+    ...(isMainAdmin ? [['agents', 'Agents']] : []),
+    ['audit', 'Audit Trail'],
+    ...(isMainAdmin ? [['coadmins', 'Co-Admins'], ['settings', 'Settings']] : [['mypin', 'My PIN']]),
+  ];
 
   return (
     <section className="block">
       <div className="wrap">
         <div className="section-head">
-          <div><span className="section-tag">Main Admin</span><h2>Manage nominations</h2></div>
+          <div><span className="section-tag">{isMainAdmin ? 'Main Admin' : 'Co-Admin'}</span><h2>Manage nominations</h2></div>
           <button className="btn btn-outline-dark" onClick={logout}>Log out</button>
         </div>
         <div className="admin-tabs">
-          {[['overview', 'Overview'], ['awards', 'Awards'], ['codes', 'Access Codes'], ['payments', 'Online Sales'], ['nominations', 'Nominations'], ['export', 'Export'], ['agents', 'Agents'], ['audit', 'Audit Trail'], ['settings', 'Settings']].map(([k, l]) => (
+          {tabs.map(([k, l]) => (
             <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
           ))}
         </div>
@@ -184,9 +221,11 @@ function MainAdminDashboard({ onLogout }) {
         {tab === 'payments' && <PaymentsTab />}
         {tab === 'nominations' && <NominationsTab />}
         {tab === 'export' && <ExportTab />}
-        {tab === 'agents' && <AgentsTab />}
+        {isMainAdmin && tab === 'agents' && <AgentsTab />}
         {tab === 'audit' && <AuditTab />}
-        {tab === 'settings' && <SettingsTab />}
+        {isMainAdmin && tab === 'coadmins' && <CoAdminsTab />}
+        {isMainAdmin && tab === 'settings' && <SettingsTab />}
+        {!isMainAdmin && tab === 'mypin' && <AgentPinTab />}
       </div>
     </section>
   );

@@ -1,10 +1,10 @@
 import { sql } from '@/lib/db';
-import { requireMainAdmin } from '@/lib/session';
+import { requireAdminLevel } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const session = await requireMainAdmin();
+  const session = await requireAdminLevel();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
   const payments = await sql`
     SELECT reference, buyer_name, email, phone, quantity, amount_pesewas, status, channel, codes, created_at, paid_at

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast } from '../components';
 
 const ID_KEY = 'ora_free_nominator';
@@ -11,6 +12,7 @@ function fmtDate(d) {
 }
 
 export default function FreeNominatePage() {
+  const router = useRouter();
   const [sections, setSections] = useState(null);
   const [config, setConfig] = useState(null);
   const [freeCount, setFreeCount] = useState(null);
@@ -154,13 +156,25 @@ export default function FreeNominatePage() {
               <div className="banner banner-good" style={{ margin: '18px 0', justifyContent: 'center' }}>
                 Reference: <span className="mono" style={{ marginLeft: 6, fontWeight: 700 }}>{String(done.id).slice(0, 8)}</span>
               </div>
-              {typeof done.remaining === 'number' && (
+              {typeof done.remaining === 'number' && done.remaining > 0 && (
                 <p style={{ fontSize: '12.5px', color: 'var(--ink-soft)' }}>
                   You can still nominate for <strong>{done.remaining}</strong> more award{done.remaining === 1 ? '' : 's'} from this number.
                 </p>
               )}
-              <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', marginTop: 14 }} onClick={nominateAnother}>
-                Nominate for another award →
+
+              <div className="divider-label">nominate someone for another award?</div>
+
+              {typeof done.remaining === 'number' && done.remaining === 0 ? (
+                <div className="banner banner-gold" style={{ textAlign: 'left', marginBottom: 14 }}>
+                  You've used up your free nominations from this number for this event. Thank you for taking part!
+                </div>
+              ) : (
+                <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', marginBottom: 10 }} onClick={nominateAnother}>
+                  Yes — nominate for another award →
+                </button>
+              )}
+              <button className="btn btn-outline-dark" style={{ width: '100%', justifyContent: 'center' }} onClick={() => router.push('/')}>
+                No, I'm done
               </button>
             </div>
           </div>

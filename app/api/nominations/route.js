@@ -1,5 +1,5 @@
 import { sql } from '@/lib/db';
-import { requireMainAdmin } from '@/lib/session';
+import { requireAdminLevel } from '@/lib/session';
 import { logAudit } from '@/lib/audit';
 import { genId } from '@/lib/codegen';
 import { getAward } from '@/lib/catalog';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 // GET: main admin only — the full nomination list (both tracks).
 export async function GET(req) {
-  const session = await requireMainAdmin();
+  const session = await requireAdminLevel();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
   const { searchParams } = new URL(req.url);
   const track = searchParams.get('track');

@@ -1,6 +1,6 @@
 import { sql } from '@/lib/db';
 import { requireAnySession } from '@/lib/session';
-import { logAudit } from '@/lib/audit';
+import { logAudit, actorFromSession } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,10 +32,7 @@ export async function DELETE(req, { params }) {
   }
 
   await sql`UPDATE codes SET status = 'void' WHERE code = ${code}`;
-  const actor = session.role === 'agent'
-    ? { type: 'agent', id: session.id, name: session.name }
-    : { type: 'main-admin' };
-  await logAudit(actor, 'code_void', { code });
+  await logAudit(actorFromSession(session), 'code_void', { code });
 
   return Response.json({ ok: true });
 }

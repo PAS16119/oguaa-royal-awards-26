@@ -217,6 +217,98 @@ export function AwardsTab() {
   );
 }
 
+/* ============================================================= CO-ADMINS === */
+export function CoAdminsTab() {
+  const [coadmins, setCoAdmins] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const [created, setCreated] = useState(null);
+
+  async function load() { setLoading(true); const d = await fetch('/api/coadmins').then(r => r.json()); setCoAdmins(d.coadmins || []); setLoading(false); }
+  useEffect(() => { load(); }, []);
+
+  async function createCoAdmin() {
+    if (!newName.trim()) { toast('Enter a name'); return; }
+    try {
+      const data = await api('/api/coadmins', 'POST', { name: newName.trim() });
+      setCreated(data); setNewName(''); toast(`Co-Admin ${data.name} created`); load();
+    } catch (e) { toast(e.message); }
+  }
+  async function resetPin(id, name) {
+    if (!confirm(`Reset PIN for ${name}? Their old PIN will stop working immediately.`)) return;
+    try {
+      const data = await api(`/api/coadmins/${id}/reset-pin`, 'POST');
+      alert(`New PIN for ${name} (${id}): ${data.pin}\n\nShare this securely — it will not be shown again.`);
+      toast(`PIN reset for ${name}`); load();
+    } catch (e) { toast(e.message); }
+  }
+  async function toggle(id, active) {
+    try { await api(`/api/coadmins/${id}/toggle`, 'POST', { active }); toast(active ? 'Co-Admin reactivated' : 'Co-Admin deactivated'); load(); }
+    catch (e) { toast(e.message); }
+  }
+  async function rename(id, oldName) {
+    const name = prompt('New name for this co-admin:', oldName);
+    if (!name || !name.trim() || name.trim() === oldName) return;
+    try { await api(`/api/coadmins/${id}/rename`, 'POST', { name: name.trim() }); toast('Co-Admin renamed'); load(); }
+    catch (e) { toast(e.message); }
+  }
+
+  if (loading) return <Loading />;
+
+  return (
+    <div>
+      <div className="banner banner-gold" style={{ marginBottom: 16 }}>
+        Co-Admins can help run Overview, Awards, Access Codes, Online Sales, Nominations, Export and the Audit Trail.
+        They cannot manage Agents, cannot touch Settings (price, dates, MoMo, Paystack), and cannot create other Co-Admins —
+        only the Main Admin can do those.
+      </div>
+      <div className="panel panel-pad" style={{ marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0 }}>Add a Co-Admin</h3>
+        <p style={{ color: 'var(--ink-soft)', fontSize: 13 }}>Each Co-Admin gets their own ID and PIN, separate from yours and from any agent's.</p>
+        <div className="two-col">
+          <div className="field" style={{ marginBottom: 0 }}><label>Name</label><input type="text" placeholder="e.g. Mr. Twumasi — Awards sub-committee" value={newName} onChange={e => setNewName(e.target.value)} /></div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={createCoAdmin}>Create co-admin →</button></div>
+        </div>
+        {created && (
+          <div className="banner banner-good" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
+            <div>Co-Admin created. Share these credentials with <strong>{created.name}</strong> now — the PIN won't be shown again:</div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <span className="code-chip">{created.id}</span>
+              <span className="code-chip">{created.pin}</span>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>ID</th><th>Status</th><th>Last login</th><th>Actions</th></tr></thead>
+          <tbody>
+            {coadmins.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No co-admins yet — create one above.</td></tr> :
+              coadmins.map(a => (
+                <tr key={a.id}>
+                  <td><strong>{a.name}</strong></td>
+                  <td className="mono">{a.id}</td>
+                  <td>{a.active ? <span className="badge badge-used">Active</span> : <span className="badge badge-inactive">Inactive</span>}</td>
+                  <td>{a.last_login_at ? new Date(a.last_login_at).toLocaleString() : 'Never'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="small-btn" onClick={() => rename(a.id, a.name)}>Rename</button>{' '}
+                    <button className="small-btn" onClick={() => resetPin(a.id, a.name)}>Reset PIN</button>{' '}
+                    {a.active
+                      ? <button className="small-btn danger" onClick={() => toggle(a.id, false)}>Deactivate</button>
+                      : <button className="small-btn good" onClick={() => toggle(a.id, true)}>Reactivate</button>}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="security-note" style={{ marginTop: 16 }}>
+        🔒 Same protection as agents: PINs are hashed with bcrypt, shown to you once at creation or reset, and never stored anywhere in plain text.
+      </div>
+    </div>
+  );
+}
+
 /* ====================================================== ONLINE PAYMENTS === */
 export function PaymentsTab() {
   const [payments, setPayments] = useState([]);

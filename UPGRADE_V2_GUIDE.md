@@ -281,13 +281,91 @@ real protection.
 
 ---
 
-## 10. Environment variables, complete list
+## 10a. v3 addendum — Co-Admin role
+
+On top of everything above, v3 adds one more role: **Co-Admin**. It's for
+committee members who should help run the nomination system day-to-day
+without holding the keys to everything.
+
+**What a Co-Admin can do:** Overview, Awards (add/edit/hide/delete
+categories on either track), Access Codes (generate and view all of them,
+not just their own), Online Sales, Nominations (view and delete), Export,
+Audit Trail, and change their own PIN.
+
+**What only the Main Admin can still do:** manage Sales Agents, manage other
+Co-Admins, change Settings (price, dates, MoMo details, the Paystack
+on/off switch), and change the Main Admin PIN. That split is deliberate —
+day-to-day running is shared, but who has access and how money moves stays
+with one person.
+
+**Setup — one more database step, one more file:**
+
+1. Run `lib/schema-v3.sql` once in the Neon SQL Editor, the same way you ran
+   `schema.sql` and `schema-v2.sql` before it. It only adds one new table
+   (`coadmins`) — nothing existing is touched.
+2. Push the code as usual (see the file list above — several files changed
+   to let Co-Admins in, and `app/api/coadmins/` and
+   `app/api/auth/coadmin-login/route.js` are new).
+3. Log in to `/admin` as Main Admin → new **Co-Admins** tab → **Create
+   co-admin**. Give the person a name; you'll get back an ID (`ADM-XXXX`)
+   and a one-time PIN — write both down and hand them over securely, the
+   same as you would for a sales agent.
+4. That person signs in at `/admin` → the **Co-Admin** pill tab, using their
+   ID and PIN.
+
+Deactivating a Co-Admin (rather than deleting) keeps their name attached to
+everything they did in the Audit Trail — the same protection agents already
+have.
+
+## 10b. v3 addendum — activating Paystack with your own account
+
+Since you already have a Paystack account, here's the short path (this is
+the same as section 5 above, condensed now that account creation is done):
+
+1. **Get your secret key.** Paystack dashboard → **Settings → API Keys &
+   Webhooks**. Copy the **Secret Key**. Start with the `sk_test_…` one —
+   test the whole flow before touching real money.
+2. **Add it to Vercel.** Project → **Settings → Environment Variables** →
+   add `PAYSTACK_SECRET_KEY` with that value, ticked for Production, Preview
+   and Development. Save, then **Deployments → Redeploy** — env vars only
+   apply to a fresh build.
+3. **Add the webhook.** Paystack → **Settings → API Keys & Webhooks →
+   Webhook URL** → `https://ora26.vercel.app/api/paystack/webhook` → Save.
+4. **Switch it on.** `/admin` → Main Admin → **Settings** → *Free
+   nominations & online sales* → tick **Let people buy access codes
+   themselves with Paystack** → Save. (If the tick box is greyed out, the
+   key hasn't reached Vercel yet, or the project needs that redeploy.)
+5. **Test it.** Go to `/buy`, pick 1 code, and at the Paystack screen choose
+   **Card**, use `4084 0840 8408 4081`, any future expiry, CVV `408`, OTP
+   `123456`. You should land back on the site holding a real code.
+6. **Go live.** Swap `sk_test_…` for your `sk_live_…` key in the same
+   Vercel field, redeploy, do one small real purchase yourself to confirm
+   the money actually lands in your Paystack settlement account, then void
+   that one test code from Admin → Access Codes.
+
+**Agents keep working exactly as before** — nothing about turning Paystack
+on changes how a committee member or sales agent generates a code in person.
+The two paths run side by side: online purchase feeds codes into the same
+`codes` table an agent's "I've been paid — generate" button does, just
+tagged `source: paystack` instead of `source: offline`, so Admin → Access
+Codes and Admin → Online Sales both show the full picture.
+
+## 11. Looking ahead — voting
+
+A voting system for the awards (once nominations close, letting people vote
+for their pick among nominees) is a natural next step on top of this — the
+nominations table is already the pool of nominees a voting round would draw
+from. It's not built yet. When you're ready, share the system you used
+before as a reference and we can figure out what's worth borrowing from it
+before building it here.
+
+## 12. Environment variables, complete list
 
 | Name | Where it comes from | Needed for |
 |---|---|---|
 | `DATABASE_URL` | Neon / Vercel Storage | everything |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob integration | photos |
-| `SESSION_SECRET` | `openssl rand -base64 32` | admin & agent login |
+| `SESSION_SECRET` | `openssl rand -base64 32` | admin, co-admin & agent login |
 | `PAYSTACK_SECRET_KEY` | Paystack → API Keys | online purchase only |
 
 Never put any of these in the repo. They belong only in Vercel's environment

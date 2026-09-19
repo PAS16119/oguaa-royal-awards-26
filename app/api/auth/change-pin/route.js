@@ -19,6 +19,14 @@ export async function POST(req) {
     const newHash = await hashPin(newPin);
     await sql`UPDATE admin_auth SET pin_hash = ${newHash}, updated_at = now() WHERE id = 'main'`;
     await logAudit({ type: 'main-admin' }, 'settings_updated', { change: 'main admin pin changed' });
+  } else if (session.role === 'co-admin') {
+    const rows = await sql`SELECT * FROM coadmins WHERE id = ${session.id}`;
+    if (rows.length === 0) return Response.json({ error: 'Co-Admin not found.' }, { status: 404 });
+    const ok = await verifyPin(currentPin || '', rows[0].pin_hash);
+    if (!ok) return Response.json({ error: 'Current PIN is incorrect.' }, { status: 401 });
+    const newHash = await hashPin(newPin);
+    await sql`UPDATE coadmins SET pin_hash = ${newHash} WHERE id = ${session.id}`;
+    await logAudit({ type: 'co-admin', id: session.id, name: session.name }, 'settings_updated', { change: 'co-admin pin changed' });
   } else {
     const rows = await sql`SELECT * FROM agents WHERE id = ${session.id}`;
     if (rows.length === 0) return Response.json({ error: 'Agent not found.' }, { status: 404 });

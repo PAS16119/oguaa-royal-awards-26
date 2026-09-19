@@ -1,10 +1,11 @@
 import { sql } from '@/lib/db';
-import { requireMainAdmin } from '@/lib/session';
+import { requireAdminLevel } from '@/lib/session';
+import { actorFromSession } from '@/lib/audit';
 import { logAudit } from '@/lib/audit';
 import { del } from '@vercel/blob';
 
 export async function DELETE(req, { params }) {
-  const session = await requireMainAdmin();
+  const session = await requireAdminLevel();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const id = decodeURIComponent(params.id);
@@ -17,7 +18,7 @@ export async function DELETE(req, { params }) {
   }
 
   await sql`DELETE FROM nominations WHERE id = ${id}`;
-  await logAudit({ type: 'main-admin' }, 'nomination_deleted', { nominationId: id, nominee: nom.nominee_name, category: nom.category });
+  await logAudit(actorFromSession(session), 'nomination_deleted', { nominationId: id, nominee: nom.nominee_name, category: nom.category });
 
   return Response.json({ ok: true });
 }

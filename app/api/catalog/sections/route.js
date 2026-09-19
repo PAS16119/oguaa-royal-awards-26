@@ -1,19 +1,19 @@
 import { sql } from '@/lib/db';
-import { requireMainAdmin } from '@/lib/session';
-import { logAudit } from '@/lib/audit';
+import { requireAdminLevel } from '@/lib/session';
+import { logAudit, actorFromSession } from '@/lib/audit';
 import { slugifySectionKey } from '@/lib/catalog';
 
 export const dynamic = 'force-dynamic';
 
 async function guard() {
-  const session = await requireMainAdmin();
+  const session = await requireAdminLevel();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
-  return null;
+  return session;
 }
 
 // POST — create a group. { track, label, emoji, color }
 export async function POST(req) {
-  const denied = await guard(); if (denied) return denied;
+  const g = await guard(); if (g instanceof Response) return g; const session = g;
   const b = await req.json();
   const track = b.track === 'free' ? 'free' : 'paid';
   const label = (b.label || '').trim();
@@ -25,13 +25,13 @@ export async function POST(req) {
     INSERT INTO award_sections (key, track, label, emoji, color, sort_order, active)
     VALUES (${key}, ${track}, ${label}, ${b.emoji || '🏆'}, ${b.color || '#5B2E91'}, ${maxRows[0].n}, true)
   `;
-  await logAudit({ type: 'main-admin' }, 'award_group_created', { key, label, track });
+  await logAudit(actorFromSession(session), 'award_group_created', { key, label, track });
   return Response.json({ ok: true, key });
 }
 
 // PATCH — edit a group. { key, label?, emoji?, color?, active?, move? ('up'|'down') }
 export async function PATCH(req) {
-  const denied = await guard(); if (denied) return denied;
+  const g = await guard(); if (g instanceof Response) return g; const session = g;
   const b = await req.json();
   const rows = await sql`SELECT * FROM award_sections WHERE key = ${b.key}`;
   if (rows.length === 0) return Response.json({ error: 'Group not found.' }, { status: 404 });
@@ -60,13 +60,13 @@ export async function PATCH(req) {
       active = ${typeof b.active === 'boolean' ? b.active : cur.active}
     WHERE key = ${b.key}
   `;
-  await logAudit({ type: 'main-admin' }, 'award_group_updated', { key: b.key });
+  await logAudit(actorFromSession(session), 'award_group_updated', { key: b.key });
   return Response.json({ ok: true });
 }
 
 // DELETE — remove a group and its awards. Blocked if any nomination references it.
 export async function DELETE(req) {
-  const denied = await guard(); if (denied) return denied;
+  const g = await guard(); if (g instanceof Response) return g; const session = g;
   const { key } = await req.json();
   const used = await sql`SELECT COUNT(*)::int AS n FROM nominations WHERE section_key = ${key}`;
   if (used[0].n > 0) {
@@ -75,6 +75,6 @@ export async function DELETE(req) {
     }, { status: 400 });
   }
   await sql`DELETE FROM award_sections WHERE key = ${key}`;
-  await logAudit({ type: 'main-admin' }, 'award_group_deleted', { key });
+  await logAudit(actorFromSession(session), 'award_group_deleted', { key });
   return Response.json({ ok: true });
 }
