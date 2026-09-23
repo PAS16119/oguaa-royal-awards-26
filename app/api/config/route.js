@@ -24,7 +24,8 @@ export async function POST(req) {
   await sql`
     INSERT INTO config (id, event_name, price_ghs, open_date, close_date, momo_name, momo_number, momo_network,
                         free_enabled, free_open_date, free_close_date, free_max_per_phone, free_photo_required,
-                        online_sales_enabled, max_codes_per_purchase)
+                        online_sales_enabled, max_codes_per_purchase,
+                        voting_enabled, vote_price_ghs, voting_open_date, voting_close_date, max_votes_per_purchase)
     VALUES ('main',
       ${pick(b.eventName, cur.event_name)},
       ${pick(b.priceGHS, cur.price_ghs) || 10},
@@ -39,7 +40,12 @@ export async function POST(req) {
       ${parseInt(pick(b.freeMaxPerPhone, cur.free_max_per_phone)) || 6},
       ${pick(b.freePhotoRequired, cur.free_photo_required)},
       ${pick(b.onlineSalesEnabled, cur.online_sales_enabled)},
-      ${parseInt(pick(b.maxCodesPerPurchase, cur.max_codes_per_purchase)) || 10}
+      ${parseInt(pick(b.maxCodesPerPurchase, cur.max_codes_per_purchase)) || 10},
+      ${pick(b.votingEnabled, cur.voting_enabled)},
+      ${Number(pick(b.votePriceGHS, cur.vote_price_ghs)) || 1},
+      ${pick(b.votingOpenDate, cur.voting_open_date) || null},
+      ${pick(b.votingCloseDate, cur.voting_close_date) || null},
+      ${parseInt(pick(b.maxVotesPerPurchase, cur.max_votes_per_purchase)) || 500}
     )
     ON CONFLICT (id) DO UPDATE SET
       event_name = EXCLUDED.event_name,
@@ -55,7 +61,12 @@ export async function POST(req) {
       free_max_per_phone = EXCLUDED.free_max_per_phone,
       free_photo_required = EXCLUDED.free_photo_required,
       online_sales_enabled = EXCLUDED.online_sales_enabled,
-      max_codes_per_purchase = EXCLUDED.max_codes_per_purchase
+      max_codes_per_purchase = EXCLUDED.max_codes_per_purchase,
+      voting_enabled = EXCLUDED.voting_enabled,
+      vote_price_ghs = EXCLUDED.vote_price_ghs,
+      voting_open_date = EXCLUDED.voting_open_date,
+      voting_close_date = EXCLUDED.voting_close_date,
+      max_votes_per_purchase = EXCLUDED.max_votes_per_purchase
   `;
   await logAudit({ type: 'main-admin' }, 'settings_updated', {});
   return Response.json({ ok: true });

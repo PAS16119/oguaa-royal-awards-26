@@ -309,6 +309,241 @@ export function CoAdminsTab() {
   );
 }
 
+/* =========================================================== VOTING ===== */
+export function VotingTab({ isMainAdmin }) {
+  const [sub, setSub] = useState('ballot');
+  return (
+    <div>
+      <div className="admin-tabs" style={{ marginBottom: 16 }}>
+        <button className={sub === 'ballot' ? 'active' : ''} onClick={() => setSub('ballot')}>🗳️ Ballot</button>
+        {isMainAdmin && <button className={sub === 'packages' ? 'active' : ''} onClick={() => setSub('packages')}>💎 Premium levels</button>}
+        <button className={sub === 'transactions' ? 'active' : ''} onClick={() => setSub('transactions')}>💳 Vote purchases</button>
+      </div>
+      {sub === 'ballot' && <BallotTab />}
+      {sub === 'packages' && isMainAdmin && <VotePackagesTab />}
+      {sub === 'transactions' && <VoteTransactionsTab isMainAdmin={isMainAdmin} />}
+    </div>
+  );
+}
+
+function BallotTab() {
+  const [candidates, setCandidates] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const [cand, noms] = await Promise.all([
+        fetch('/api/candidates?all=1').then(r => r.json()),
+        fetch('/api/nominations?track=paid').then(r => r.json()),
+      ]);
+      const cList = cand.candidates || [];
+      setCandidates(cList);
+      const onBallot = new Set(cList.map(c => c.nomination_id));
+      setPending((noms.nominations || []).filter(n => !onBallot.has(n.id)));
+    } catch (e) { toast(e.message); }
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function addToBallot(nominationId) {
+    try { await api('/api/candidates', 'POST', { nominationId }); toast('Added to ballot'); load(); }
+    catch (e) { toast(e.message); }
+  }
+  async function toggleActive(c) {
+    try { await api(`/api/candidates/${c.id}`, 'PATCH', { active: !c.active }); load(); }
+    catch (e) { toast(e.message); }
+  }
+  async function removeCandidate(c) {
+    if (!confirm(`Remove ${c.nominee_name} from the ballot?`)) return;
+    try { await api(`/api/candidates/${c.id}`, 'DELETE'); toast('Removed'); load(); }
+    catch (e) { toast(e.message); }
+  }
+
+  if (loading) return <Loading />;
+
+  return (
+    <div>
+      <div className="banner banner-gold" style={{ marginBottom: 16 }}>
+        Only paid-track nominations you explicitly add here can be voted for — nothing lands on the ballot automatically.
+      </div>
+
+      <div className="panel panel-pad" style={{ marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0 }}>Paid nominations awaiting the ballot ({pending.length})</h3>
+        {pending.length === 0 ? (
+          <p style={{ color: 'var(--ink-soft)', fontSize: 13 }}>Nothing waiting — every paid nomination is either already on the ballot, or there are none yet.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Nominee</th><th>Category</th><th></th></tr></thead>
+              <tbody>
+                {pending.map(n => (
+                  <tr key={n.id}>
+                    <td>{n.nominee_name}</td>
+                    <td>{n.category}</td>
+                    <td><button className="small-btn" onClick={() => addToBallot(n.id)}>Add to ballot →</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="panel panel-pad">
+        <h3 style={{ marginTop: 0 }}>Current ballot ({candidates.length})</h3>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Candidate</th><th>Category</th><th>Votes</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {candidates.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No candidates yet.</td></tr> :
+                candidates.map(c => (
+                  <tr key={c.id} style={{ opacity: c.active ? 1 : 0.55 }}>
+                    <td>{c.nominee_name}</td>
+                    <td>{c.award_name}</td>
+                    <td><strong>{c.votes}</strong></td>
+                    <td>{c.active ? <span className="badge badge-used">Live</span> : <span className="badge badge-inactive">Hidden</span>}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="small-btn" onClick={() => toggleActive(c)}>{c.active ? 'Hide' : 'Show'}</button>{' '}
+                      <button className="small-btn danger" onClick={() => removeCandidate(c)}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VotePackagesTab() {
+  const [packages, setPackages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ label: '', votes: '', priceGHS: '' });
+
+  async function load() { setLoading(true); const d = await fetch('/api/vote-packages?all=1').then(r => r.json()); setPackages(d.packages || []); setLoading(false); }
+  useEffect(() => { load(); }, []);
+
+  async function create() {
+    try {
+      await api('/api/vote-packages', 'POST', form);
+      setForm({ label: '', votes: '', priceGHS: '' }); toast('Package added'); load();
+    } catch (e) { toast(e.message); }
+  }
+  async function toggle(p) { try { await api(`/api/vote-packages/${p.id}`, 'PATCH', { active: !p.active }); load(); } catch (e) { toast(e.message); } }
+  async function edit(p) {
+    const label = prompt('Package name:', p.label); if (label === null) return;
+    const votes = prompt('Votes included:', p.votes); if (votes === null) return;
+    const priceGHS = prompt('Price (GH₵):', p.price_ghs); if (priceGHS === null) return;
+    try { await api(`/api/vote-packages/${p.id}`, 'PATCH', { label, votes: parseInt(votes), priceGHS: Number(priceGHS) }); load(); } catch (e) { toast(e.message); }
+  }
+  async function del(p) {
+    if (!confirm(`Delete "${p.label}"?`)) return;
+    try { await api(`/api/vote-packages/${p.id}`, 'DELETE'); toast('Deleted'); load(); } catch (e) { toast(e.message); }
+  }
+
+  if (loading) return <Loading />;
+
+  return (
+    <div>
+      <div className="banner banner-gold" style={{ marginBottom: 16 }}>
+        "Premium levels" — bulk vote bundles a supporter can buy in one tap instead of entering a custom count.
+      </div>
+      <div className="panel panel-pad" style={{ marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0 }}>Add a package</h3>
+        <div className="two-col">
+          <div className="field" style={{ marginBottom: 0 }}><label>Name</label><input type="text" placeholder="e.g. Gold Supporter" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} /></div>
+          <div className="field" style={{ marginBottom: 0 }}><label>Votes</label><input type="number" value={form.votes} onChange={e => setForm(f => ({ ...f, votes: e.target.value }))} /></div>
+        </div>
+        <div className="two-col">
+          <div className="field"><label>Price (GH₵)</label><input type="number" step="0.01" value={form.priceGHS} onChange={e => setForm(f => ({ ...f, priceGHS: e.target.value }))} /></div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={create}>Add package</button></div>
+        </div>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Votes</th><th>Price</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {packages.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No packages yet — supporters can still vote with a custom count.</td></tr> :
+              packages.map(p => (
+                <tr key={p.id} style={{ opacity: p.active ? 1 : 0.55 }}>
+                  <td>{p.label}</td><td>{p.votes}</td><td>GH₵{Number(p.price_ghs).toFixed(2)}</td>
+                  <td>{p.active ? <span className="badge badge-used">Active</span> : <span className="badge badge-inactive">Hidden</span>}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="small-btn" onClick={() => edit(p)}>Edit</button>{' '}
+                    <button className="small-btn" onClick={() => toggle(p)}>{p.active ? 'Hide' : 'Show'}</button>{' '}
+                    <button className="small-btn danger" onClick={() => del(p)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function VoteTransactionsTab({ isMainAdmin }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() { setLoading(true); const d = await fetch('/api/vote-payments').then(r => r.json()); setRows(d.votePayments || []); setLoading(false); }
+  useEffect(() => { load(); }, []);
+
+  async function voidPurchase(ref) {
+    const reason = prompt('Reason for voiding this vote purchase (required):');
+    if (!reason || !reason.trim()) return;
+    try { await api(`/api/vote-payments/${encodeURIComponent(ref)}/void`, 'POST', { reason }); toast('Voided'); load(); }
+    catch (e) { toast(e.message); }
+  }
+
+  if (loading) return <Loading />;
+
+  const paid = rows.filter(r => r.status === 'paid');
+  const votesTotal = paid.reduce((n, r) => n + (r.votes || 0), 0);
+  const revenue = paid.reduce((n, r) => n + Number(r.amount_pesewas || 0), 0) / 100;
+
+  return (
+    <div>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+        <div className="kpi"><div className="n">{paid.length}</div><div className="l">Successful purchases</div></div>
+        <div className="kpi"><div className="n">{votesTotal}</div><div className="l">Votes credited</div></div>
+        <div className="kpi"><div className="n">GH₵{revenue.toFixed(2)}</div><div className="l">Raised</div></div>
+        <div className="kpi"><div className="n">{rows.filter(r => r.status === 'voided').length}</div><div className="l">Voided</div></div>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Reference</th><th>Voter</th><th>Candidate</th><th>Votes</th><th>Amount</th><th>Status</th><th>When</th>{isMainAdmin && <th></th>}</tr></thead>
+          <tbody>
+            {rows.length === 0 ? <tr><td colSpan={isMainAdmin ? 8 : 7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No vote purchases yet.</td></tr> :
+              rows.map(p => (
+                <tr key={p.reference}>
+                  <td className="mono" style={{ fontSize: 11 }}>{p.reference}</td>
+                  <td>{p.buyer_name}<div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{p.phone}</div></td>
+                  <td>{p.nominee_name}</td>
+                  <td>{p.votes}</td>
+                  <td>GH₵{(Number(p.amount_pesewas) / 100).toFixed(2)}</td>
+                  <td><span className={`badge ${p.status === 'paid' ? 'badge-used' : p.status === 'pending' ? 'badge-unused' : 'badge-void'}`}>{p.status}</span>
+                    {p.status === 'voided' && p.void_reason && <div style={{ fontSize: 10, color: 'var(--ink-soft)' }}>{p.void_reason}</div>}
+                  </td>
+                  <td style={{ fontSize: 11 }}>{new Date(p.paid_at || p.created_at).toLocaleString()}</td>
+                  {isMainAdmin && <td>{p.status === 'paid' && <button className="small-btn danger" onClick={() => voidPurchase(p.reference)}>Void</button>}</td>}
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="security-note" style={{ marginTop: 16 }}>
+        🔒 Votes are only ever credited after Paystack confirms payment, and the amount is checked against what the
+        server calculated at checkout. Voiding a purchase subtracts its votes and keeps the record — nothing is ever
+        silently edited.
+      </div>
+    </div>
+  );
+}
+
 /* ====================================================== ONLINE PAYMENTS === */
 export function PaymentsTab() {
   const [payments, setPayments] = useState([]);
@@ -389,6 +624,11 @@ export function ExtraSettings() {
         freePhotoRequired: !!config.free_photo_required,
         onlineSalesEnabled: !!config.online_sales_enabled,
         maxCodesPerPurchase: parseInt(config.max_codes_per_purchase) || 10,
+        votingEnabled: !!config.voting_enabled,
+        votePriceGHS: Number(config.vote_price_ghs) || 1,
+        votingOpenDate: config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : null,
+        votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
+        maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
       }),
     });
     if (!res.ok) { setMsg({ ok: false, text: 'Failed to save.' }); return; }
@@ -437,6 +677,26 @@ export function ExtraSettings() {
           PAYSTACK_SECRET_KEY is not set on this deployment, so online purchase cannot be switched on yet.
         </div>
       )}
+
+      <div className="divider-label">paid voting (fundraiser)</div>
+
+      <label className="checkbox-row" style={{ marginBottom: 12 }}>
+        <input type="checkbox" checked={!!config.voting_enabled} disabled={!paystackReady} onChange={e => set('voting_enabled', e.target.checked)} />
+        Voting is open
+      </label>
+      <div className="two-col">
+        <div className="field"><label>Voting opens</label>
+          <input type="text" placeholder="YYYY-MM-DD" value={config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : ''} onChange={e => set('voting_open_date', e.target.value)} /></div>
+        <div className="field"><label>Voting closes</label>
+          <input type="text" placeholder="YYYY-MM-DD" value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} /></div>
+      </div>
+      <div className="two-col">
+        <div className="field"><label>Price per single vote (GH₵)</label>
+          <input type="text" value={config.vote_price_ghs ?? 1} onChange={e => set('vote_price_ghs', e.target.value)} />
+          <div className="hint">Ignored when a supporter picks a package instead.</div></div>
+        <div className="field"><label>Max votes per single purchase</label>
+          <input type="text" value={config.max_votes_per_purchase ?? 500} onChange={e => set('max_votes_per_purchase', e.target.value)} /></div>
+      </div>
 
       <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={save}>Save these settings</button>
       {msg && <div className={`banner ${msg.ok ? 'banner-good' : 'banner-bad'}`} style={{ marginTop: 12 }}>{msg.text}</div>}

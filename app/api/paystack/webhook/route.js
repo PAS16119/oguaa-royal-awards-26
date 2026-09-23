@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { fulfilPayment, paystackSecret } from '@/lib/paystack';
+import { fulfilVotePayment, isVoteReference } from '@/lib/votes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,12 @@ export async function POST(req) {
 
   if (event?.event === 'charge.success' && event?.data?.reference) {
     try {
-      await fulfilPayment(event.data.reference, event.data);
+      // One webhook URL serves both flows — dispatch by reference prefix.
+      if (isVoteReference(event.data.reference)) {
+        await fulfilVotePayment(event.data.reference, event.data);
+      } else {
+        await fulfilPayment(event.data.reference, event.data);
+      }
     } catch (e) {
       // Log and still answer 200 — Paystack retries on non-2xx, and a
       // permanent error (unknown reference) would be retried forever.

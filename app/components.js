@@ -47,6 +47,7 @@ const NAV_TABS = [
   ['/access', 'Get Access'],
   ['/nominate', 'Nominate'],
   ['/nominate-free', 'Free Awards'],
+  ['/vote', 'Vote'],
 ];
 
 export function Shell({ children }) {

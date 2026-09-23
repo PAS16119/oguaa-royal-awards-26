@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast } from '../components';
-import { AwardsTab, PaymentsTab, ExtraSettings, CoAdminsTab } from './manage';
+import { AwardsTab, PaymentsTab, ExtraSettings, CoAdminsTab, VotingTab } from './manage';
 
 function sanitizeFile(s) {
   return (s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 60);
@@ -197,7 +197,7 @@ function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
 
   const tabs = [
     ['overview', 'Overview'], ['awards', 'Awards'], ['codes', 'Access Codes'],
-    ['payments', 'Online Sales'], ['nominations', 'Nominations'], ['export', 'Export'],
+    ['payments', 'Online Sales'], ['voting', 'Voting'], ['nominations', 'Nominations'], ['export', 'Export'],
     ...(isMainAdmin ? [['agents', 'Agents']] : []),
     ['audit', 'Audit Trail'],
     ...(isMainAdmin ? [['coadmins', 'Co-Admins'], ['settings', 'Settings']] : [['mypin', 'My PIN']]),
@@ -219,6 +219,7 @@ function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
         {tab === 'awards' && <AwardsTab />}
         {tab === 'codes' && <CodesTab role="main-admin" />}
         {tab === 'payments' && <PaymentsTab />}
+        {tab === 'voting' && <VotingTab isMainAdmin={isMainAdmin} />}
         {tab === 'nominations' && <NominationsTab />}
         {tab === 'export' && <ExportTab />}
         {isMainAdmin && tab === 'agents' && <AgentsTab />}
