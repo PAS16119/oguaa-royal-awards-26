@@ -11,9 +11,10 @@ export default function VoteResultsPage() {
     fetch('/api/public/summary').then(r => r.json()).then(setTotals).catch(() => {});
   }, []);
 
+  const resultsHidden = (candidates || []).length > 0 && candidates.every(c => c.votes === null);
   const grouped = {};
   (candidates || []).forEach(c => { (grouped[c.section_label || 'Other'] = grouped[c.section_label || 'Other'] || []).push(c); });
-  Object.values(grouped).forEach(list => list.sort((a, b) => b.votes - a.votes));
+  Object.values(grouped).forEach(list => list.sort((a, b) => (b.votes ?? 0) - (a.votes ?? 0)));
 
   return (
     <Shell>
@@ -33,11 +34,17 @@ export default function VoteResultsPage() {
             </div>
           )}
 
+          {resultsHidden && (
+            <div className="banner" style={{ marginBottom: 20 }}>
+              🤫 The committee has kept individual vote counts private for now — keep voting, and check back later!
+            </div>
+          )}
+
           {candidates === null ? (
             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
           ) : candidates.length === 0 ? (
             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
-          ) : Object.keys(grouped).map(section => (
+          ) : resultsHidden ? null : Object.keys(grouped).map(section => (
             <div key={section} className="panel panel-pad" style={{ marginBottom: 16 }}>
               <h3 style={{ marginTop: 0 }}>{section}</h3>
               {grouped[section].map((c, i) => {

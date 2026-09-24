@@ -134,7 +134,7 @@ export default function VotePage() {
                       : <div style={{ width: 88, height: 88, borderRadius: '50%', background: 'var(--panel-2)', margin: '0 auto 10px' }} />}
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{c.nominee_name}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 6 }}>{c.award_name}</div>
-                    <div className="badge badge-used" style={{ marginBottom: 10 }}>{c.votes} vote{c.votes === 1 ? '' : 's'}</div>
+                    <div className="badge badge-used" style={{ marginBottom: 10 }}>{c.votes === null ? 'Vote now' : `${c.votes} vote${c.votes === 1 ? '' : 's'}`}</div>
                     <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', fontSize: 13 }}
                       onClick={() => { setPickedId(c.id); setErr(''); }}>
                       Vote →
@@ -154,7 +154,7 @@ export default function VotePage() {
                   : <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--panel-2)' }} />}
                 <div>
                   <div style={{ fontWeight: 700 }}>{picked.nominee_name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{picked.award_name} · {picked.votes} votes so far</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{picked.award_name}{picked.votes !== null && ` · ${picked.votes} votes so far`}</div>
                 </div>
               </div>
 

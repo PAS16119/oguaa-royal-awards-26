@@ -1,7 +1,7 @@
 import { sql } from '@/lib/db';
 import { requireAdminLevel } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
-import { genId } from '@/lib/codegen';
+import { genId, genBallotCode } from '@/lib/codegen';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +24,14 @@ export async function GET(req) {
     FROM candidates WHERE active = true
     ORDER BY section_label, award_name, votes DESC
   `;
-  return Response.json({ candidates: rows });
+
+  // The "suspense switch" — when the admin has turned public results off,
+  // strip the actual tallies before this reaches anyone outside admin/co-admin.
+  const cfgRows = await sql`SELECT results_public FROM config WHERE id = 'main'`;
+  const resultsPublic = cfgRows[0]?.results_public !== false;
+  const out = resultsPublic ? rows : rows.map(c => ({ ...c, votes: null }));
+
+  return Response.json({ candidates: out, resultsPublic });
 }
 
 // POST — promote a paid-track nomination onto the ballot. Admin or Co-Admin.
@@ -47,15 +54,25 @@ export async function POST(req) {
   }
 
   const id = genId();
+
+  // Ballot code is what a feature phone dials into the USSD menu, so it has
+  // to be unique — retry on the rare collision (1-in-900 odds per attempt).
+  let ballotCode = genBallotCode();
+  let clash = await sql`SELECT 1 FROM candidates WHERE ballot_code = ${ballotCode}`;
+  while (clash.length > 0) {
+    ballotCode = genBallotCode();
+    clash = await sql`SELECT 1 FROM candidates WHERE ballot_code = ${ballotCode}`;
+  }
+
   await sql`
     INSERT INTO candidates
       (id, nomination_id, award_id, section_key, section_label, award_name,
-       nominee_name, nominee_class, nominee_house, photo_url, votes, active, created_at, created_by)
+       nominee_name, nominee_class, nominee_house, photo_url, votes, active, created_at, created_by, ballot_code)
     VALUES
       (${id}, ${nominationId}, ${nom.award_id}, ${nom.section_key}, ${nom.section_label}, ${nom.category},
-       ${nom.nominee_name}, ${nom.nominee_class}, ${nom.nominee_house}, ${nom.photo_url}, 0, true, now(), ${session.role})
+       ${nom.nominee_name}, ${nom.nominee_class}, ${nom.nominee_house}, ${nom.photo_url}, 0, true, now(), ${session.role}, ${ballotCode})
   `;
-  await logAudit(actorFromSession(session), 'candidate_added', { candidateId: id, nominee: nom.nominee_name, award: nom.category });
+  await logAudit(actorFromSession(session), 'candidate_added', { candidateId: id, nominee: nom.nominee_name, award: nom.category, ballotCode });
 
-  return Response.json({ ok: true, id });
+  return Response.json({ ok: true, id, ballotCode });
 }

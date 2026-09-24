@@ -25,7 +25,8 @@ export async function POST(req) {
     INSERT INTO config (id, event_name, price_ghs, open_date, close_date, momo_name, momo_number, momo_network,
                         free_enabled, free_open_date, free_close_date, free_max_per_phone, free_photo_required,
                         online_sales_enabled, max_codes_per_purchase,
-                        voting_enabled, vote_price_ghs, voting_open_date, voting_close_date, max_votes_per_purchase)
+                        voting_enabled, vote_price_ghs, voting_open_date, voting_close_date, max_votes_per_purchase,
+                        results_public)
     VALUES ('main',
       ${pick(b.eventName, cur.event_name)},
       ${pick(b.priceGHS, cur.price_ghs) || 10},
@@ -45,7 +46,8 @@ export async function POST(req) {
       ${Number(pick(b.votePriceGHS, cur.vote_price_ghs)) || 1},
       ${pick(b.votingOpenDate, cur.voting_open_date) || null},
       ${pick(b.votingCloseDate, cur.voting_close_date) || null},
-      ${parseInt(pick(b.maxVotesPerPurchase, cur.max_votes_per_purchase)) || 500}
+      ${parseInt(pick(b.maxVotesPerPurchase, cur.max_votes_per_purchase)) || 500},
+      ${pick(b.resultsPublic, cur.results_public) !== false}
     )
     ON CONFLICT (id) DO UPDATE SET
       event_name = EXCLUDED.event_name,
@@ -66,7 +68,8 @@ export async function POST(req) {
       vote_price_ghs = EXCLUDED.vote_price_ghs,
       voting_open_date = EXCLUDED.voting_open_date,
       voting_close_date = EXCLUDED.voting_close_date,
-      max_votes_per_purchase = EXCLUDED.max_votes_per_purchase
+      max_votes_per_purchase = EXCLUDED.max_votes_per_purchase,
+      results_public = EXCLUDED.results_public
   `;
   await logAudit({ type: 'main-admin' }, 'settings_updated', {});
   return Response.json({ ok: true });

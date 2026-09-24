@@ -393,13 +393,18 @@ function BallotTab() {
 
       <div className="panel panel-pad">
         <h3 style={{ marginTop: 0 }}>Current ballot ({candidates.length})</h3>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: -6 }}>
+          Each candidate's <strong>Code</strong> is what supporters dial into the USSD voting menu — print it on
+          posters/flyers next to their name and photo.
+        </p>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Candidate</th><th>Category</th><th>Votes</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Code</th><th>Candidate</th><th>Category</th><th>Votes</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {candidates.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No candidates yet.</td></tr> :
+              {candidates.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No candidates yet.</td></tr> :
                 candidates.map(c => (
                   <tr key={c.id} style={{ opacity: c.active ? 1 : 0.55 }}>
+                    <td><span className="badge">{c.ballot_code || '—'}</span></td>
                     <td>{c.nominee_name}</td>
                     <td>{c.award_name}</td>
                     <td><strong>{c.votes}</strong></td>
@@ -629,6 +634,7 @@ export function ExtraSettings() {
         votingOpenDate: config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : null,
         votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
+        resultsPublic: config.results_public !== false,
       }),
     });
     if (!res.ok) { setMsg({ ok: false, text: 'Failed to save.' }); return; }
@@ -696,6 +702,16 @@ export function ExtraSettings() {
           <div className="hint">Ignored when a supporter picks a package instead.</div></div>
         <div className="field"><label>Max votes per single purchase</label>
           <input type="text" value={config.max_votes_per_purchase ?? 500} onChange={e => set('max_votes_per_purchase', e.target.value)} /></div>
+      </div>
+
+      <label className="checkbox-row" style={{ marginBottom: 4 }}>
+        <input type="checkbox" checked={config.results_public !== false} onChange={e => set('results_public', e.target.checked)} />
+        Show live vote totals publicly
+      </label>
+      <div className="hint" style={{ marginBottom: 12 }}>
+        Turn this off to hide vote counts on /vote and /vote/results (and the USSD "check votes" option) —
+        useful for building suspense, or if you'd rather a trailing candidate not see exactly how far behind they are.
+        People can still vote while this is off; they just can't see the running tally. Admin and Co-Admin views are unaffected.
       </div>
 
       <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={save}>Save these settings</button>
