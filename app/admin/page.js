@@ -196,11 +196,11 @@ function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
   async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); onLogout(); }
 
   const tabs = [
-    ['overview', 'Overview'], ['awards', 'Awards'], ['codes', 'Access Codes'],
-    ['payments', 'Online Sales'], ['voting', 'Voting'], ['nominations', 'Nominations'], ['export', 'Export'],
-    ...(isMainAdmin ? [['agents', 'Agents']] : []),
-    ['audit', 'Audit Trail'],
-    ...(isMainAdmin ? [['coadmins', 'Co-Admins'], ['settings', 'Settings']] : [['mypin', 'My PIN']]),
+    ['overview', '📊', 'Overview'], ['awards', '🏆', 'Awards'], ['codes', '🔑', 'Access Codes'],
+    ['payments', '🛍️', 'Online Sales'], ['voting', '🗳️', 'Voting'], ['nominations', '📋', 'Nominations'], ['export', '📤', 'Export'],
+    ...(isMainAdmin ? [['agents', '🧑\u200d💼', 'Agents']] : []),
+    ['audit', '🕵️', 'Audit Trail'],
+    ...(isMainAdmin ? [['coadmins', '👥', 'Co-Admins'], ['settings', '⚙️', 'Settings']] : [['mypin', '🔒', 'My PIN']]),
   ];
 
   return (
@@ -210,23 +210,29 @@ function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
           <div><span className="section-tag">{isMainAdmin ? 'Main Admin' : 'Co-Admin'}</span><h2>Manage nominations</h2></div>
           <button className="btn btn-outline-dark" onClick={logout}>Log out</button>
         </div>
-        <div className="admin-tabs">
-          {tabs.map(([k, l]) => (
-            <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{l}</button>
-          ))}
+        <div className="admin-shell">
+          <nav className="admin-sidebar">
+            {tabs.map(([k, icon, l]) => (
+              <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+                <span className="admin-sidebar-icon">{icon}</span>{l}
+              </button>
+            ))}
+          </nav>
+          <div className="admin-content">
+            {tab === 'overview' && <OverviewTab />}
+            {tab === 'awards' && <AwardsTab />}
+            {tab === 'codes' && <CodesTab role="main-admin" />}
+            {tab === 'payments' && <PaymentsTab />}
+            {tab === 'voting' && <VotingTab isMainAdmin={isMainAdmin} />}
+            {tab === 'nominations' && <NominationsTab />}
+            {tab === 'export' && <ExportTab />}
+            {isMainAdmin && tab === 'agents' && <AgentsTab />}
+            {tab === 'audit' && <AuditTab />}
+            {isMainAdmin && tab === 'coadmins' && <CoAdminsTab />}
+            {isMainAdmin && tab === 'settings' && <SettingsTab />}
+            {!isMainAdmin && tab === 'mypin' && <AgentPinTab />}
+          </div>
         </div>
-        {tab === 'overview' && <OverviewTab />}
-        {tab === 'awards' && <AwardsTab />}
-        {tab === 'codes' && <CodesTab role="main-admin" />}
-        {tab === 'payments' && <PaymentsTab />}
-        {tab === 'voting' && <VotingTab isMainAdmin={isMainAdmin} />}
-        {tab === 'nominations' && <NominationsTab />}
-        {tab === 'export' && <ExportTab />}
-        {isMainAdmin && tab === 'agents' && <AgentsTab />}
-        {tab === 'audit' && <AuditTab />}
-        {isMainAdmin && tab === 'coadmins' && <CoAdminsTab />}
-        {isMainAdmin && tab === 'settings' && <SettingsTab />}
-        {!isMainAdmin && tab === 'mypin' && <AgentPinTab />}
       </div>
     </section>
   );

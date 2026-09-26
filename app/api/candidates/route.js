@@ -20,7 +20,7 @@ export async function GET(req) {
 
   const rows = await sql`
     SELECT id, award_id, section_key, section_label, award_name, nominee_name,
-           nominee_class, nominee_house, photo_url, votes
+           nominee_class, nominee_house, photo_url, votes, ballot_code
     FROM candidates WHERE active = true
     ORDER BY section_label, award_name, votes DESC
   `;

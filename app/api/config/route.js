@@ -46,7 +46,7 @@ export async function POST(req) {
       ${Number(pick(b.votePriceGHS, cur.vote_price_ghs)) || 1},
       ${pick(b.votingOpenDate, cur.voting_open_date) || null},
       ${pick(b.votingCloseDate, cur.voting_close_date) || null},
-      ${parseInt(pick(b.maxVotesPerPurchase, cur.max_votes_per_purchase)) || 500},
+      ${Math.min(5000, Math.max(1, parseInt(pick(b.maxVotesPerPurchase, cur.max_votes_per_purchase)) || 500))},
       ${pick(b.resultsPublic, cur.results_public) !== false}
     )
     ON CONFLICT (id) DO UPDATE SET

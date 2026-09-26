@@ -72,8 +72,12 @@ export default function VoteResultsPage() {
                       return (
                         <div key={c.id} style={{ marginBottom: 12 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                            <span>
-                              <span style={{ color: 'var(--ink-soft)', fontSize: 11.5, marginRight: 4 }}>#{i + 1}</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ color: 'var(--ink-soft)', fontSize: 11.5 }}>#{i + 1}</span>
+                              {c.photo_url && (
+                                <img src={c.photo_url} alt="" width={22} height={22}
+                                     style={{ borderRadius: '50%', objectFit: 'cover', flex: 'none' }} />
+                              )}
                               {i === 0 && c.votes > 0 ? '🏆 ' : ''}{c.nominee_name}
                             </span>
                             <strong>{c.votes}</strong>

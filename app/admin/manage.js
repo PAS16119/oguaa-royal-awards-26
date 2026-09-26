@@ -330,6 +330,7 @@ function BallotTab() {
   const [candidates, setCandidates] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [posterFor, setPosterFor] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -410,6 +411,7 @@ function BallotTab() {
                     <td><strong>{c.votes}</strong></td>
                     <td>{c.active ? <span className="badge badge-used">Live</span> : <span className="badge badge-inactive">Hidden</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="small-btn" onClick={() => setPosterFor(c)}>🖨️ Poster</button>{' '}
                       <button className="small-btn" onClick={() => toggleActive(c)}>{c.active ? 'Hide' : 'Show'}</button>{' '}
                       <button className="small-btn danger" onClick={() => removeCandidate(c)}>Remove</button>
                     </td>
@@ -417,6 +419,56 @@ function BallotTab() {
                 ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {posterFor && <CandidatePoster candidate={posterFor} onClose={() => setPosterFor(null)} />}
+    </div>
+  );
+}
+
+function CandidatePoster({ candidate, onClose }) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ora26.vercel.app';
+  const voteUrl = `${origin}/vote?code=${candidate.ballot_code}`;
+  // Rendered via a public QR image service, not a bundled library — the
+  // poster is printed ahead of time from a browser with internet access, so
+  // this trades a hard dependency for zero added build complexity.
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(voteUrl)}`;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <div className="poster-print-area panel" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ background: 'linear-gradient(160deg, var(--royal-3), var(--royal) 60%, var(--royal-2))', color: 'var(--parchment)', padding: '22px 26px 18px', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--gold-light)' }}>Oguaa Royal Awards</div>
+            <div style={{ fontSize: 13.5, marginTop: 2, opacity: .85 }}>Vote now — every vote counts</div>
+          </div>
+          <div style={{ padding: '26px 26px 30px', textAlign: 'center' }}>
+            {candidate.photo_url && (
+              <img src={candidate.photo_url} alt={candidate.nominee_name}
+                   style={{ width: 150, height: 150, objectFit: 'cover', borderRadius: '50%', border: '4px solid var(--gold)', margin: '0 auto 16px', display: 'block' }} />
+            )}
+            <h3 style={{ margin: '0 0 4px', fontSize: 22 }}>{candidate.nominee_name}</h3>
+            <div style={{ color: 'var(--ink-soft)', fontSize: 14, marginBottom: 20 }}>{candidate.award_name}</div>
+
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--ink-soft)', marginBottom: 6 }}>Dial to vote</div>
+                <div className="code-chip" style={{ fontSize: 22, padding: '10px 20px' }}>{candidate.ballot_code}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-soft)', marginTop: 6 }}>on any phone, no data needed</div>
+              </div>
+              <div style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 700 }}>OR</div>
+              <div>
+                <img src={qrSrc} alt="Scan to vote online" width={110} height={110} style={{ display: 'block', borderRadius: 8 }} />
+                <div style={{ fontSize: 10.5, color: 'var(--ink-soft)', marginTop: 6 }}>scan to vote online</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          <button className="btn btn-gold" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.print()}>Print poster</button>
+          <button className="btn btn-outline-dark" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>

@@ -37,6 +37,18 @@ export default function VotePage() {
     } catch {}
   }, []);
 
+  // Poster QR codes link here as /vote?code=204 — once candidates load, jump
+  // straight to that candidate instead of making a scanner scroll the whole
+  // list. Read window.location directly (client-only, inside an effect) so
+  // this doesn't pull in useSearchParams and its Suspense-boundary requirement.
+  useEffect(() => {
+    if (!candidates) return;
+    const code = new URLSearchParams(window.location.search).get('code');
+    if (!code) return;
+    const match = candidates.find(c => c.ballot_code === code);
+    if (match) setPickedId(match.id);
+  }, [candidates]);
+
   const grouped = {};
   (candidates || []).forEach(c => {
     const key = c.section_label || 'Other';
