@@ -1,42 +1,63 @@
 'use client';
 import { usePathname, useRouter } from 'next/navigation';
 
+// Shared client-side compression: shrink to maxDim on the long edge and
+// re-encode as JPEG, so photos from any phone camera stay well under the
+// 3MB ceiling in app/api/upload/route.js. Used anywhere a person picks a
+// photo — nomination forms, the admin ballot, and the self-service photo page.
+export function compressImageFile(file, { maxDim = 900, quality = 0.85 } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!file) { reject(new Error('No file selected.')); return; }
+    if (!file.type || !file.type.startsWith('image/')) { reject(new Error('Please choose an image file.')); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not read that image.'));
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function uploadPhotoDataUrl(dataUrl) {
+  const res = await fetch('/api/upload', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dataUrl }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Upload failed.');
+  return data.url;
+}
+
 export function Crest() {
   return (
-    <svg className="crest" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: 38, height: 38, flex: 'none' }}>
-      <circle cx="20" cy="20" r="19" stroke="url(#g1)" strokeWidth="1.6" />
-      <path d="M20 8 L23 16 L31 16 L24.5 21 L27 29 L20 24.2 L13 29 L15.5 21 L9 16 L17 16 Z" fill="url(#g1)" />
-      <defs>
-        <linearGradient id="g1" x1="0" y1="0" x2="40" y2="40">
-          <stop stopColor="#F1D98B" />
-          <stop offset="1" stopColor="#9C7A1E" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <img
+      src="/logo-mark.png"
+      alt="Oguaa Royal Awards"
+      className="crest"
+      style={{ width: 38, height: 38, flex: 'none', objectFit: 'contain' }}
+    />
   );
 }
 
 export function Seal({ id = 'seal', caption }) {
-  const gid = 'sg' + id;
   return (
     <div className="seal-wrap">
-      <svg viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" style={{ width: 120, height: 120, flex: 'none' }}>
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="140" y2="140">
-            <stop stopColor="#F1D98B" />
-            <stop offset="0.5" stopColor="#D4AF37" />
-            <stop offset="1" stopColor="#8A6B18" />
-          </linearGradient>
-        </defs>
-        <circle cx="70" cy="70" r="66" fill="none" stroke={`url(#${gid})`} strokeWidth="2.5" />
-        <circle cx="70" cy="70" r="57" fill="none" stroke={`url(#${gid})`} strokeWidth="1" />
-        <path id={`tp${gid}`} d="M 20 70 A 50 50 0 1 1 120 70" fill="none" />
-        <text fontFamily="Playfair Display, serif" fontSize="10.5" letterSpacing="2.5" fill="#D4AF37">
-          <textPath href={`#tp${gid}`} startOffset="2">OGUAA ROYAL AWARDS</textPath>
-        </text>
-        <path d="M70 46 L76 60 L91 60 L79 69 L84 84 L70 75 L56 84 L61 69 L49 60 L64 60 Z" fill={`url(#${gid})`} />
-        <text x="70" y="104" textAnchor="middle" fontFamily="Inter, sans-serif" fontSize="8" letterSpacing="2" fill="#D4AF37">EST. ANNIVERSARY ED.</text>
-      </svg>
+      <img
+        src="/logo-mark.png"
+        alt="Oguaa Royal Awards"
+        style={{ width: 120, height: 120, flex: 'none', objectFit: 'contain' }}
+      />
       {caption && <div className="seal-caption">{caption}</div>}
     </div>
   );

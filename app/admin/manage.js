@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { toast } from '../components';
+import { toast, compressImageFile, uploadPhotoDataUrl } from '../components';
 import PosterCard from '../vote/poster/PosterCard';
 
 function Loading() {
@@ -96,6 +96,12 @@ export function AwardsTab() {
   const patchAward = (a, patch) => run(() => api('/api/catalog/awards', 'PATCH', { id: a.id, ...patch }));
   const patchGroup = (s, patch) => run(() => api('/api/catalog/sections', 'PATCH', { key: s.key, ...patch }));
 
+  const moveAwardToGroup = (a, sectionKey) => run(async () => {
+    if (!sectionKey || sectionKey === a.section_key) return;
+    await api('/api/catalog/awards', 'PATCH', { id: a.id, sectionKey });
+    toast('Moved');
+  });
+
   const deleteAward = (a) => run(async () => {
     if (!confirm(`Delete "${a.name}"?`)) return;
     await api('/api/catalog/awards', 'DELETE', { id: a.id });
@@ -146,11 +152,11 @@ export function AwardsTab() {
               <div className="table-wrap" style={{ marginTop: 14 }}>
                 <table>
                   <thead>
-                    <tr><th>Award</th><th>Nomination</th><th>Noms</th><th style={{ minWidth: 190 }}>Actions</th></tr>
+                    <tr><th>Award</th><th>Nomination</th><th>Noms</th><th style={{ minWidth: 130 }}>Group</th><th style={{ minWidth: 190 }}>Actions</th></tr>
                   </thead>
                   <tbody>
                     {s.awards.length === 0 ? (
-                      <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 18 }}>No awards in this group yet.</td></tr>
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 18 }}>No awards in this group yet.</td></tr>
                     ) : s.awards.map((a, ai) => (
                       <tr key={a.id} style={{ opacity: a.active ? 1 : 0.55 }}>
                         <td>
@@ -164,6 +170,18 @@ export function AwardsTab() {
                           </span>
                         </td>
                         <td>{counts[a.id] || 0}</td>
+                        <td>
+                          <select
+                            value={a.section_key}
+                            onChange={e => moveAwardToGroup(a, e.target.value)}
+                            style={{ fontSize: 12, padding: '5px 6px', borderRadius: 8 }}
+                            title="Move this award to a different group"
+                          >
+                            {sections.map(opt => (
+                              <option key={opt.key} value={opt.key}>{opt.emoji} {opt.label}</option>
+                            ))}
+                          </select>
+                        </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <button className="small-btn" disabled={ai === 0} onClick={() => patchAward(a, { move: 'up' })}>↑</button>{' '}
                           <button className="small-btn" disabled={ai === s.awards.length - 1} onClick={() => patchAward(a, { move: 'down' })}>↓</button>{' '}
@@ -363,6 +381,19 @@ function BallotTab() {
     catch (e) { toast(e.message); }
   }
 
+  const [photoBusyId, setPhotoBusyId] = useState(null);
+  async function changePhoto(c, file) {
+    setPhotoBusyId(c.id);
+    try {
+      const dataUrl = await compressImageFile(file);
+      const url = await uploadPhotoDataUrl(dataUrl);
+      await api(`/api/candidates/${c.id}`, 'PATCH', { photoUrl: url });
+      toast('Photo updated');
+      load();
+    } catch (e) { toast(e.message); }
+    setPhotoBusyId(null);
+  }
+
   if (loading) return <Loading />;
 
   return (
@@ -401,11 +432,16 @@ function BallotTab() {
         </p>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Code</th><th>Candidate</th><th>Category</th><th>Votes</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Code</th><th>Candidate</th><th>Category</th><th>Votes</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {candidates.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No candidates yet.</td></tr> :
+              {candidates.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No candidates yet.</td></tr> :
                 candidates.map(c => (
                   <tr key={c.id} style={{ opacity: c.active ? 1 : 0.55 }}>
+                    <td>
+                      {c.photo_url
+                        ? <img src={c.photo_url} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
+                        : <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--panel-2)' }} />}
+                    </td>
                     <td><span className="badge">{c.ballot_code || '—'}</span></td>
                     <td>{c.nominee_name}</td>
                     <td>{c.award_name}</td>
@@ -413,6 +449,11 @@ function BallotTab() {
                     <td>{c.active ? <span className="badge badge-used">Live</span> : <span className="badge badge-inactive">Hidden</span>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="small-btn" onClick={() => setPosterFor(c)}>🖨️ Poster</button>{' '}
+                      <label className="small-btn" style={{ display: 'inline-block', opacity: photoBusyId === c.id ? 0.5 : 1 }}>
+                        {photoBusyId === c.id ? 'Uploading…' : '📷 Photo'}
+                        <input type="file" accept="image/*" style={{ display: 'none' }} disabled={photoBusyId === c.id}
+                          onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) changePhoto(c, f); }} />
+                      </label>{' '}
                       <button className="small-btn" onClick={() => toggleActive(c)}>{c.active ? 'Hide' : 'Show'}</button>{' '}
                       <button className="small-btn danger" onClick={() => removeCandidate(c)}>Remove</button>
                     </td>
@@ -430,13 +471,17 @@ function BallotTab() {
 
 function CandidatePoster({ candidate, onClose }) {
   const [shortcode, setShortcode] = useState(null);
+  const [bgUrl, setBgUrl] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ora26.vercel.app';
   const voteUrl = `${origin}/vote?code=${candidate.ballot_code}`;
   const nomineeLink = `${origin}/vote/poster/${candidate.ballot_code}`;
 
   useEffect(() => {
-    fetch('/api/public/summary').then(r => r.json()).then(d => setShortcode(d?.config?.ussd_shortcode || null)).catch(() => {});
+    fetch('/api/public/summary').then(r => r.json()).then(d => {
+      setShortcode(d?.config?.ussd_shortcode || null);
+      setBgUrl(d?.config?.poster_bg_url || null);
+    }).catch(() => {});
   }, []);
 
   async function copyNomineeLink() {
@@ -476,7 +521,7 @@ function CandidatePoster({ candidate, onClose }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
         <div className="poster-print-area">
-          <PosterCard candidate={candidate} voteUrl={voteUrl} shortcode={shortcode} />
+          <PosterCard candidate={candidate} voteUrl={voteUrl} shortcode={shortcode} bgUrl={bgUrl} />
         </div>
 
         <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
@@ -710,6 +755,7 @@ export function ExtraSettings() {
         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
         resultsPublic: config.results_public !== false,
         ussdShortcode: config.ussd_shortcode || null,
+        posterBgUrl: config.poster_bg_url || null,
       }),
     });
     if (!res.ok) { setMsg({ ok: false, text: 'Failed to save.' }); return; }
@@ -717,6 +763,18 @@ export function ExtraSettings() {
   }
 
   const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
+
+  const [bgBusy, setBgBusy] = useState(false);
+  async function changePosterBg(file) {
+    setBgBusy(true);
+    try {
+      const dataUrl = await compressImageFile(file, { maxDim: 1400, quality: 0.85 });
+      const url = await uploadPhotoDataUrl(dataUrl);
+      set('poster_bg_url', url);
+      toast('Background uploaded — click "Save these settings" below to apply it');
+    } catch (e) { toast(e.message); }
+    setBgBusy(false);
+  }
 
   return (
     <div className="panel panel-pad" style={{ maxWidth: 560, marginBottom: 20 }}>
@@ -782,6 +840,27 @@ export function ExtraSettings() {
       <div className="field" style={{ marginBottom: 12 }}><label>USSD shortcode (shown on posters)</label>
         <input type="text" placeholder="*928*135#" value={config.ussd_shortcode || ''} onChange={e => set('ussd_shortcode', e.target.value)} />
         <div className="hint">The exact code supporters dial, once your Arkesel extension is approved — e.g. *928*135#.</div></div>
+
+      <div className="field" style={{ marginBottom: 12 }}>
+        <label>Poster background</label>
+        {config.poster_bg_url ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <img src={config.poster_bg_url} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover' }} />
+            <button className="small-btn danger" type="button" onClick={() => set('poster_bg_url', null)}>Remove</button>
+          </div>
+        ) : (
+          <div className="hint" style={{ marginBottom: 8 }}>No custom background set — posters use the built-in royal-gold design.</div>
+        )}
+        <label className="btn btn-outline-dark" style={{ padding: '9px 16px', fontSize: 13, display: 'inline-flex', cursor: bgBusy ? 'default' : 'pointer', opacity: bgBusy ? 0.6 : 1 }}>
+          {bgBusy ? 'Uploading…' : config.poster_bg_url ? 'Replace image' : 'Upload an image'}
+          <input type="file" accept="image/*" style={{ display: 'none' }} disabled={bgBusy}
+            onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) changePosterBg(f); }} />
+        </label>
+        <div className="hint" style={{ marginTop: 6 }}>
+          Used behind the nominee/candidate photo on printable posters. A tall, richly-coloured image works best — the
+          candidate's name, photo, code and QR are laid over it with a dark overlay for readability.
+        </div>
+      </div>
 
       <label className="checkbox-row" style={{ marginBottom: 4 }}>
         <input type="checkbox" checked={config.results_public !== false} onChange={e => set('results_public', e.target.checked)} />

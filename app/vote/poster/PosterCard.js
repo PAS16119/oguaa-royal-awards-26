@@ -4,8 +4,12 @@ import { Seal } from '../../components';
 // One poster design, used from two places: the admin "Print poster" modal,
 // and the public /vote/poster/[code] page a nominee can be sent a link to
 // directly — so a nominee never needs an admin login to get their own poster.
-export default function PosterCard({ candidate, voteUrl, shortcode }) {
+export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=${encodeURIComponent(voteUrl)}`;
+
+  const background = bgUrl
+    ? `linear-gradient(180deg, rgba(24,15,61,0.55), rgba(24,15,61,0.82) 60%, rgba(24,15,61,0.94)), url(${bgUrl})`
+    : 'radial-gradient(700px 380px at 15% -10%, rgba(212,175,55,0.28), transparent 60%),radial-gradient(600px 380px at 100% 0%, rgba(122,31,61,0.5), transparent 55%),linear-gradient(165deg, var(--royal-3), var(--royal) 55%, var(--royal-2))';
 
   return (
     <div
@@ -17,7 +21,9 @@ export default function PosterCard({ candidate, voteUrl, shortcode }) {
         margin: '0 auto',
         borderRadius: 22,
         overflow: 'hidden',
-        background: 'radial-gradient(700px 380px at 15% -10%, rgba(212,175,55,0.28), transparent 60%),radial-gradient(600px 380px at 100% 0%, rgba(122,31,61,0.5), transparent 55%),linear-gradient(165deg, var(--royal-3), var(--royal) 55%, var(--royal-2))',
+        background,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         border: '1px solid rgba(212,175,55,0.4)',
         boxShadow: '0 24px 60px -20px rgba(23,18,51,0.6)',
         color: 'var(--parchment)',

@@ -7,6 +7,7 @@ export default function NomineePosterPage({ params }) {
   const { code } = params;
   const [candidate, setCandidate] = useState(undefined); // undefined = loading, null = not found
   const [shortcode, setShortcode] = useState(null);
+  const [bgUrl, setBgUrl] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
@@ -14,7 +15,10 @@ export default function NomineePosterPage({ params }) {
       const match = (d.candidates || []).find(c => c.ballot_code === code);
       setCandidate(match || null);
     }).catch(() => setCandidate(null));
-    fetch('/api/public/summary').then(r => r.json()).then(d => setShortcode(d?.config?.ussd_shortcode || null)).catch(() => {});
+    fetch('/api/public/summary').then(r => r.json()).then(d => {
+      setShortcode(d?.config?.ussd_shortcode || null);
+      setBgUrl(d?.config?.poster_bg_url || null);
+    }).catch(() => {});
   }, [code]);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ora26.vercel.app';
@@ -72,11 +76,16 @@ export default function NomineePosterPage({ params }) {
           {candidate && (
             <>
               <div style={{ marginBottom: 20 }}>
-                <PosterCard candidate={candidate} voteUrl={voteUrl} shortcode={shortcode} />
+                <PosterCard candidate={candidate} voteUrl={voteUrl} shortcode={shortcode} bgUrl={bgUrl} />
               </div>
               <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={downloadPoster} disabled={downloading}>
                 {downloading ? 'Preparing…' : '⬇ Download poster to share'}
               </button>
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                <a href={`/vote/poster/${code}/photo`} style={{ fontSize: 12.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
+                  Wrong photo? Update it →
+                </a>
+              </div>
             </>
           )}
         </div>

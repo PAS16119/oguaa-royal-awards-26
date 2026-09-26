@@ -19,6 +19,7 @@ export default function VotePage() {
   const [totals, setTotals] = useState(null);
 
   const [pickedId, setPickedId] = useState(null);
+  const [activeSection, setActiveSection] = useState(null);
   const [packageId, setPackageId] = useState('');
   const [customVotes, setCustomVotes] = useState(10);
   const [name, setName] = useState('');
@@ -46,7 +47,7 @@ export default function VotePage() {
     const code = new URLSearchParams(window.location.search).get('code');
     if (!code) return;
     const match = candidates.find(c => c.ballot_code === code);
-    if (match) setPickedId(match.id);
+    if (match) { setPickedId(match.id); setActiveSection(match.section_label || 'Other'); }
   }, [candidates]);
 
   const grouped = {};
@@ -135,11 +136,33 @@ export default function VotePage() {
             </div>
           )}
 
-          {!closedMsg && !picked && Object.keys(grouped).map(section => (
-            <div key={section} style={{ marginBottom: 26 }}>
-              <h3 style={{ margin: '0 0 12px' }}>{section}</h3>
+          {!closedMsg && !picked && !activeSection && Object.keys(grouped).length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+              {Object.keys(grouped).map(section => (
+                <button
+                  key={section}
+                  className="panel panel-pad"
+                  style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
+                  onClick={() => setActiveSection(section)}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{section}</div>
+                    <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>
+                      {grouped[section].length} nominee{grouped[section].length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 18, color: 'var(--gold, #c9a227)' }}>→</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!closedMsg && !picked && activeSection && grouped[activeSection] && (
+            <div>
+              <button className="small-btn" style={{ marginBottom: 16 }} onClick={() => setActiveSection(null)}>← All categories</button>
+              <h3 style={{ margin: '0 0 12px' }}>{activeSection}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                {grouped[section].map(c => (
+                {grouped[activeSection].map(c => (
                   <div key={c.id} className="panel panel-pad" style={{ textAlign: 'center' }}>
                     {c.photo_url
                       ? <img src={c.photo_url} alt={c.nominee_name} style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', margin: '0 auto 10px' }} />
@@ -155,11 +178,11 @@ export default function VotePage() {
                 ))}
               </div>
             </div>
-          ))}
+          )}
 
           {picked && (
             <div className="panel panel-pad">
-              <button className="small-btn" style={{ marginBottom: 14 }} onClick={() => setPickedId(null)}>← Back to candidates</button>
+              <button className="small-btn" style={{ marginBottom: 14 }} onClick={() => setPickedId(null)}>← Back to {activeSection || 'candidates'}</button>
               <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 18 }}>
                 {picked.photo_url
                   ? <img src={picked.photo_url} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }} />
