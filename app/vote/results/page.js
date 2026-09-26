@@ -76,7 +76,7 @@ export default function VoteResultsPage() {
                               <span style={{ color: 'var(--ink-soft)', fontSize: 11.5 }}>#{i + 1}</span>
                               {c.photo_url && (
                                 <img src={c.photo_url} alt="" width={22} height={22}
-                                     style={{ borderRadius: '50%', objectFit: 'cover', flex: 'none' }} />
+                                     style={{ borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', flex: 'none' }} />
                               )}
                               {i === 0 && c.votes > 0 ? '🏆 ' : ''}{c.nominee_name}
                             </span>

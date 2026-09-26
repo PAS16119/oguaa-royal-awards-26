@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { toast } from '../components';
+import PosterCard from '../vote/poster/PosterCard';
 
 function Loading() {
   return <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>Loading…</div>;
@@ -428,47 +429,68 @@ function BallotTab() {
 }
 
 function CandidatePoster({ candidate, onClose }) {
+  const [shortcode, setShortcode] = useState(null);
+  const [downloading, setDownloading] = useState(false);
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ora26.vercel.app';
   const voteUrl = `${origin}/vote?code=${candidate.ballot_code}`;
-  // Rendered via a public QR image service, not a bundled library — the
-  // poster is printed ahead of time from a browser with internet access, so
-  // this trades a hard dependency for zero added build complexity.
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(voteUrl)}`;
+  const nomineeLink = `${origin}/vote/poster/${candidate.ballot_code}`;
+
+  useEffect(() => {
+    fetch('/api/public/summary').then(r => r.json()).then(d => setShortcode(d?.config?.ussd_shortcode || null)).catch(() => {});
+  }, []);
+
+  async function copyNomineeLink() {
+    try { await navigator.clipboard.writeText(nomineeLink); toast('Link copied — send it to the nominee'); }
+    catch { toast('Could not copy — long-press the link instead'); }
+  }
+
+  // html2canvas is loaded from a CDN on demand rather than bundled, since
+  // downloading a poster image is a rarely-used admin action — not worth
+  // adding to every visitor's JS bundle. useCORS lets it read the candidate
+  // photo and QR image (both served with permissive CORS) into the canvas;
+  // without that, the download would silently omit those two images.
+  async function downloadPoster() {
+    setDownloading(true);
+    try {
+      if (!window.html2canvas) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      const node = document.getElementById('poster-card');
+      const canvas = await window.html2canvas(node, { useCORS: true, backgroundColor: null, scale: 2 });
+      const link = document.createElement('a');
+      link.download = `${candidate.nominee_name.replace(/[^a-z0-9]+/gi, '-')}-poster.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      toast('Download failed — try Print instead, or right-click and Save on the public poster page');
+    }
+    setDownloading(false);
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
-        <div className="poster-print-area panel" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ background: 'linear-gradient(160deg, var(--royal-3), var(--royal) 60%, var(--royal-2))', color: 'var(--parchment)', padding: '22px 26px 18px', textAlign: 'center' }}>
-            <div style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: 'var(--gold-light)' }}>Oguaa Royal Awards</div>
-            <div style={{ fontSize: 13.5, marginTop: 2, opacity: .85 }}>Vote now — every vote counts</div>
-          </div>
-          <div style={{ padding: '26px 26px 30px', textAlign: 'center' }}>
-            {candidate.photo_url && (
-              <img src={candidate.photo_url} alt={candidate.nominee_name}
-                   style={{ width: 150, height: 150, objectFit: 'cover', borderRadius: '50%', border: '4px solid var(--gold)', margin: '0 auto 16px', display: 'block' }} />
-            )}
-            <h3 style={{ margin: '0 0 4px', fontSize: 22 }}>{candidate.nominee_name}</h3>
-            <div style={{ color: 'var(--ink-soft)', fontSize: 14, marginBottom: 20 }}>{candidate.award_name}</div>
-
-            <div style={{ display: 'flex', gap: 20, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontSize: 10.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--ink-soft)', marginBottom: 6 }}>Dial to vote</div>
-                <div className="code-chip" style={{ fontSize: 22, padding: '10px 20px' }}>{candidate.ballot_code}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--ink-soft)', marginTop: 6 }}>on any phone, no data needed</div>
-              </div>
-              <div style={{ color: 'var(--ink-soft)', fontSize: 11, fontWeight: 700 }}>OR</div>
-              <div>
-                <img src={qrSrc} alt="Scan to vote online" width={110} height={110} style={{ display: 'block', borderRadius: 8 }} />
-                <div style={{ fontSize: 10.5, color: 'var(--ink-soft)', marginTop: 6 }}>scan to vote online</div>
-              </div>
-            </div>
-          </div>
+        <div className="poster-print-area">
+          <PosterCard candidate={candidate} voteUrl={voteUrl} shortcode={shortcode} />
         </div>
 
-        <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-          <button className="btn btn-gold" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.print()}>Print poster</button>
+        <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+          <button className="btn btn-gold" style={{ flex: '1 1 140px', justifyContent: 'center' }} onClick={downloadPoster} disabled={downloading}>
+            {downloading ? 'Preparing…' : '⬇ Download PNG'}
+          </button>
+          <button className="btn btn-outline-dark" style={{ flex: '1 1 140px', justifyContent: 'center' }} onClick={() => window.print()}>Print</button>
+        </div>
+        <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline-dark" style={{ flex: '1 1 200px', justifyContent: 'center' }} onClick={copyNomineeLink}>🔗 Copy link to send the nominee</button>
           <button className="btn btn-outline-dark" onClick={onClose}>Close</button>
+        </div>
+        <div className="hint no-print" style={{ marginTop: 8, textAlign: 'center' }}>
+          The nominee link opens a public page with this same poster — no login needed. They can download or screenshot it themselves to share on WhatsApp/status.
         </div>
       </div>
     </div>
@@ -687,6 +709,7 @@ export function ExtraSettings() {
         votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
         resultsPublic: config.results_public !== false,
+        ussdShortcode: config.ussd_shortcode || null,
       }),
     });
     if (!res.ok) { setMsg({ ok: false, text: 'Failed to save.' }); return; }
@@ -755,6 +778,10 @@ export function ExtraSettings() {
         <div className="field"><label>Max votes per single purchase</label>
           <input type="text" value={config.max_votes_per_purchase ?? 500} onChange={e => set('max_votes_per_purchase', e.target.value)} /></div>
       </div>
+
+      <div className="field" style={{ marginBottom: 12 }}><label>USSD shortcode (shown on posters)</label>
+        <input type="text" placeholder="*928*135#" value={config.ussd_shortcode || ''} onChange={e => set('ussd_shortcode', e.target.value)} />
+        <div className="hint">The exact code supporters dial, once your Arkesel extension is approved — e.g. *928*135#.</div></div>
 
       <label className="checkbox-row" style={{ marginBottom: 4 }}>
         <input type="checkbox" checked={config.results_public !== false} onChange={e => set('results_public', e.target.checked)} />

@@ -26,7 +26,7 @@ export async function POST(req) {
                         free_enabled, free_open_date, free_close_date, free_max_per_phone, free_photo_required,
                         online_sales_enabled, max_codes_per_purchase,
                         voting_enabled, vote_price_ghs, voting_open_date, voting_close_date, max_votes_per_purchase,
-                        results_public)
+                        results_public, ussd_shortcode)
     VALUES ('main',
       ${pick(b.eventName, cur.event_name)},
       ${pick(b.priceGHS, cur.price_ghs) || 10},
@@ -47,7 +47,8 @@ export async function POST(req) {
       ${pick(b.votingOpenDate, cur.voting_open_date) || null},
       ${pick(b.votingCloseDate, cur.voting_close_date) || null},
       ${Math.min(5000, Math.max(1, parseInt(pick(b.maxVotesPerPurchase, cur.max_votes_per_purchase)) || 500))},
-      ${pick(b.resultsPublic, cur.results_public) !== false}
+      ${pick(b.resultsPublic, cur.results_public) !== false},
+      ${pick(b.ussdShortcode, cur.ussd_shortcode) || null}
     )
     ON CONFLICT (id) DO UPDATE SET
       event_name = EXCLUDED.event_name,
@@ -69,7 +70,8 @@ export async function POST(req) {
       voting_open_date = EXCLUDED.voting_open_date,
       voting_close_date = EXCLUDED.voting_close_date,
       max_votes_per_purchase = EXCLUDED.max_votes_per_purchase,
-      results_public = EXCLUDED.results_public
+      results_public = EXCLUDED.results_public,
+      ussd_shortcode = EXCLUDED.ussd_shortcode
   `;
   await logAudit({ type: 'main-admin' }, 'settings_updated', {});
   return Response.json({ ok: true });
