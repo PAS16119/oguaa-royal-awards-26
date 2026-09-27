@@ -122,7 +122,6 @@ export async function POST(req) {
 
   // ----------------------------------------------------------- PAID track
   if (!code) return Response.json({ error: 'An access code is required.' }, { status: 400 });
-  if (!photoUrl) return Response.json({ error: 'A photo of the nominee is required.' }, { status: 400 });
 
   const upperCode = String(code).toUpperCase();
   const rows = await sql`SELECT * FROM codes WHERE code = ${upperCode}`;
@@ -139,7 +138,7 @@ export async function POST(req) {
        reason, photo_url, nominator_name, nominator_phone, relation, nominator_role, nominator_ip, submitted_at)
     VALUES
       (${id}, ${upperCode}, 'paid', ${awardId || null}, ${sectionKey}, ${sectionLabel}, ${category}, ${nomineeName}, ${nomineeClass || ''}, ${nomineeHouse || ''},
-       ${reason}, ${photoUrl}, ${nominatorName}, ${phone}, ${relation || ''}, ${nominatorRole || ''}, ${ip}, now())
+       ${reason}, ${photoUrl || null}, ${nominatorName}, ${phone}, ${relation || ''}, ${nominatorRole || ''}, ${ip}, now())
   `;
   await sql`UPDATE codes SET status = 'used', used_at = now(), nomination_id = ${id} WHERE code = ${upperCode}`;
 

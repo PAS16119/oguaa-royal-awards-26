@@ -79,7 +79,6 @@ export default function NominatePage() {
     const errs = {};
     if (!awardId) errs.category = true;
     if (!nomineeName.trim()) errs.name = true;
-    if (!photoDataUrl) errs.photo = true;
     if (!reason.trim()) errs.reason = true;
     if (!yourName.trim()) errs.yourName = true;
     if (!yourPhone.trim()) errs.yourPhone = true;
@@ -89,19 +88,23 @@ export default function NominatePage() {
 
     setSubmitting(true);
     try {
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataUrl: photoDataUrl }),
-      });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) throw new Error(uploadData.error || 'Photo upload failed');
+      let photoUrl = null;
+      if (photoDataUrl) {
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl: photoDataUrl }),
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error || 'Photo upload failed');
+        photoUrl = uploadData.url;
+      }
 
       const res = await fetch('/api/nominations', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           track: 'paid', code: unlocked, awardId,
           nomineeName: nomineeName.trim(), nomineeClass: nomineeClass.trim(), nomineeHouse: nomineeHouse.trim(),
-          reason: reason.trim(), photoUrl: uploadData.url,
+          reason: reason.trim(), photoUrl,
           nominatorName: yourName.trim(), nominatorPhone: yourPhone.trim(), relation,
         }),
       });
@@ -194,7 +197,7 @@ export default function NominatePage() {
             <div>
               <span className="section-tag">Code {unlocked} · unlocked</span>
               <h2>Submit your nomination</h2>
-              <div className="sub">Fields marked * are required. Take care with the photo — it will be used to make the nominee's flyer.</div>
+              <div className="sub">Fields marked * are required. A photo is optional, but if you add one, take care with it — it will be used to make the nominee's flyer.</div>
             </div>
           </div>
           <div className="panel panel-pad">
@@ -228,18 +231,17 @@ export default function NominatePage() {
               </div>
             </div>
 
-            <div className={`field ${errors.photo ? 'invalid' : ''}`}>
-              <label>Nominee photo *</label>
+            <div className="field">
+              <label>Nominee photo (optional)</label>
               <div className="photo-drop" onClick={() => fileInputRef.current?.click()}>
                 {photoDataUrl
                   ? <img src={photoDataUrl} alt="Preview" />
                   : <div className="ph-empty">
-                      Tap to upload a clear passport-style photo<br />
-                      <span style={{ fontSize: 11 }}>JPG or PNG · auto-optimized for flyers</span>
+                      Tap to add a clear passport-style photo<br />
+                      <span style={{ fontSize: 11 }}>JPG or PNG · helpful for the flyer, not required</span>
                     </div>}
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" style={{ display: 'none' }} onChange={handlePhoto} />
-              {errors.photo && <div className="err-msg">Please upload a photo of the nominee.</div>}
             </div>
 
             <div className={`field ${errors.reason ? 'invalid' : ''}`}>
@@ -277,7 +279,7 @@ export default function NominatePage() {
             <div className={`field ${errors.consent ? 'invalid' : ''}`}>
               <label className="checkbox-row">
                 <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />
-                I confirm the nominee is aware of this nomination and consents to their photo being used on campaign flyers and materials for this event. *
+                I confirm the nominee is aware of this nomination and consents to their name, details, and photo (if provided) being used on campaign flyers and materials for this event. *
               </label>
               {errors.consent && <div className="err-msg">Consent is required to submit.</div>}
             </div>

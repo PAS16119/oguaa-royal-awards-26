@@ -19,7 +19,7 @@ function Badge({ status }) {
 const ACTION_LABELS = {
   code_generated: 'Code generated', code_used: 'Code used (nomination)', code_void: 'Code voided',
   agent_created: 'Agent created', agent_pin_reset: 'Agent PIN reset', agent_deactivated: 'Agent deactivated',
-  agent_reactivated: 'Agent reactivated', agent_renamed: 'Agent renamed', nomination_deleted: 'Nomination deleted', admin_login: 'Main admin login', agent_login: 'Agent login',
+  agent_reactivated: 'Agent reactivated', agent_renamed: 'Agent renamed', nomination_deleted: 'Nomination deleted', nomination_edited: 'Nomination edited', admin_login: 'Main admin login', agent_login: 'Agent login',
   main_admin_setup: 'Main admin PIN created', settings_updated: 'Settings updated',
   coadmin_created: 'Co-Admin created', coadmin_pin_reset: 'Co-Admin PIN reset', coadmin_deactivated: 'Co-Admin deactivated',
   coadmin_reactivated: 'Co-Admin reactivated', coadmin_renamed: 'Co-Admin renamed', coadmin_login: 'Co-Admin login',
@@ -407,6 +407,7 @@ function NominationsTab() {
   const [sortBy, setSortBy] = useState('section');
   const [trackFilter, setTrackFilter] = useState('');
   const [viewing, setViewing] = useState(null);
+  const [editing, setEditing] = useState(null);
 
   useEffect(() => { fetch('/api/nominations').then(r => r.json()).then(d => { setNoms(d.nominations || []); setLoading(false); }); }, []);
 
@@ -417,6 +418,12 @@ function NominationsTab() {
     if (!res.ok) { toast(data.error || 'Failed to delete'); return; }
     toast('Nomination deleted');
     setNoms(prev => prev.filter(n => n.id !== id));
+    setViewing(null);
+  }
+
+  function saveEdit(updated) {
+    setNoms(prev => prev.map(n => n.id === updated.id ? updated : n));
+    setEditing(null);
     setViewing(null);
   }
 
@@ -473,7 +480,7 @@ function NominationsTab() {
                   <td><span className={`badge ${n.track === 'free' ? 'badge-unused' : 'badge-used'}`}>{n.track === 'free' ? 'free' : 'paid'}</span></td>
                   <td>{n.nominator_name}<div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{n.nominator_phone}</div></td>
                   <td>{n.submitted_at ? new Date(n.submitted_at).toLocaleDateString() : ''}</td>
-                  <td><button className="small-btn" onClick={() => setViewing(n)}>View</button>{' '}<button className="small-btn danger" onClick={() => deleteNomination(n.id, n.nominee_name)}>Delete</button></td>
+                  <td><button className="small-btn" onClick={() => setViewing(n)}>View</button>{' '}<button className="small-btn" onClick={() => setEditing(n)}>Edit</button>{' '}<button className="small-btn danger" onClick={() => deleteNomination(n.id, n.nominee_name)}>Delete</button></td>
                 </tr>
               ))}
           </tbody>
@@ -493,11 +500,109 @@ function NominationsTab() {
             <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 10 }}>{viewing.track === 'free' ? 'Free nomination' : `Code ${viewing.code}`} · Submitted {new Date(viewing.submitted_at).toLocaleString()}</div>
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button className="btn btn-outline-dark" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setViewing(null)}>Close</button>
+              <button className="btn btn-gold" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setEditing(viewing)}>Edit</button>
               <button className="btn btn-burgundy" style={{ flex: 1, justifyContent: 'center', color: '#fff' }} onClick={() => deleteNomination(viewing.id, viewing.nominee_name)}>Delete</button>
             </div>
           </div>
         </div>
       )}
+      {editing && <EditNominationModal nomination={editing} onClose={() => setEditing(null)} onSaved={saveEdit} />}
+    </div>
+  );
+}
+
+function EditNominationModal({ nomination, onClose, onSaved }) {
+  const track = nomination.track || 'paid';
+  const [sections, setSections] = useState(null);
+  const [awardId, setAwardId] = useState(nomination.award_id || '');
+  const [nomineeName, setNomineeName] = useState(nomination.nominee_name || '');
+  const [nomineeClass, setNomineeClass] = useState(nomination.nominee_class || '');
+  const [nomineeHouse, setNomineeHouse] = useState(nomination.nominee_house || '');
+  const [reason, setReason] = useState(nomination.reason || '');
+  const [nominatorName, setNominatorName] = useState(nomination.nominator_name || '');
+  const [nominatorPhone, setNominatorPhone] = useState(nomination.nominator_phone || '');
+  const [relation, setRelation] = useState(nomination.relation || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/catalog?track=${track}`).then(r => r.json()).then(d => setSections(d.sections || [])).catch(() => setSections([]));
+  }, [track]);
+
+  const fieldStyle = { width: '100%', padding: '9px 12px', border: '1.5px solid var(--parchment-2)', borderRadius: 9, fontSize: 13.5, marginTop: 4, marginBottom: 12, boxSizing: 'border-box' };
+
+  async function save() {
+    if (!nomineeName.trim()) { toast('Nominee name is required'); return; }
+    setSaving(true);
+    const res = await fetch(`/api/nominations/${nomination.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        awardId, nomineeName, nomineeClass, nomineeHouse, reason,
+        nominatorName, nominatorPhone, relation,
+      }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { toast(data.error || 'Failed to save'); return; }
+    toast('Nomination updated');
+    onSaved(data.nomination);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="panel panel-pad modal-box">
+        <h3 style={{ marginTop: 0 }}>Edit nomination</h3>
+        <label style={{ fontSize: 12, fontWeight: 600 }}>Award category</label>
+        <select style={fieldStyle} value={awardId} onChange={e => setAwardId(e.target.value)}>
+          <option value={nomination.award_id || ''}>{nomination.category} (current)</option>
+          {(sections || []).map(s => (
+            <optgroup key={s.key} label={`${s.emoji || ''} ${s.label}`}>
+              {s.awards.filter(a => a.nominable && a.id !== nomination.award_id).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </optgroup>
+          ))}
+        </select>
+
+        <label style={{ fontSize: 12, fontWeight: 600 }}>Nominee name</label>
+        <input style={fieldStyle} value={nomineeName} onChange={e => setNomineeName(e.target.value)} />
+
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 12, fontWeight: 600 }}>Class / Form</label>
+            <input style={fieldStyle} value={nomineeClass} onChange={e => setNomineeClass(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 12, fontWeight: 600 }}>House / Dept</label>
+            <input style={fieldStyle} value={nomineeHouse} onChange={e => setNomineeHouse(e.target.value)} />
+          </div>
+        </div>
+
+        <label style={{ fontSize: 12, fontWeight: 600 }}>Reason</label>
+        <textarea style={{ ...fieldStyle, minHeight: 70 }} value={reason} onChange={e => setReason(e.target.value)} />
+
+        <div className="divider-label">nominator</div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 12, fontWeight: 600 }}>Name</label>
+            <input style={fieldStyle} value={nominatorName} onChange={e => setNominatorName(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 12, fontWeight: 600 }}>Phone</label>
+            <input style={fieldStyle} value={nominatorPhone} onChange={e => setNominatorPhone(e.target.value)} />
+          </div>
+        </div>
+        <label style={{ fontSize: 12, fontWeight: 600 }}>Relationship</label>
+        <input style={fieldStyle} value={relation} onChange={e => setRelation(e.target.value)} />
+
+        {nomination.track === 'paid' && (
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 12 }}>
+            Re-categorising updates the ballot entry too, if this nomination has already been promoted to a candidate.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <button className="btn btn-outline-dark" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>Cancel</button>
+          <button className="btn btn-gold" style={{ flex: 1, justifyContent: 'center' }} disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</button>
+        </div>
+      </div>
     </div>
   );
 }
