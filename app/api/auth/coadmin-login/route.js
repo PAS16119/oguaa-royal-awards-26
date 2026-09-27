@@ -21,7 +21,7 @@ export async function POST(req) {
   await sql`UPDATE coadmins SET last_login_at = now() WHERE id = ${id}`;
   await logAudit({ type: 'co-admin', id: co.id, name: co.name }, 'coadmin_login', {});
 
-  const token = await createSessionToken({ role: 'co-admin', id: co.id, name: co.name });
+  const token = await createSessionToken({ role: 'co-admin', id: co.id, name: co.name, permissions: co.permissions || null });
   cookies().set(SESSION_COOKIE, token, {
     httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 12,
   });

@@ -1,10 +1,10 @@
 import { sql } from '@/lib/db';
-import { requireAdminLevel } from '@/lib/session';
+import { requireSection } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const session = await requireAdminLevel();
+  const session = await requireSection('voting');
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const rows = await sql`

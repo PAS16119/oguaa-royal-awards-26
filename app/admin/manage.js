@@ -237,11 +237,52 @@ export function AwardsTab() {
 }
 
 /* ============================================================= CO-ADMINS === */
+// Keep this list in sync with ADMIN_SECTIONS in lib/session.js — it's
+// duplicated here because that file imports next/headers and can't be
+// pulled into a client component.
+const ADMIN_SECTIONS = [
+  ['awards', 'Awards & Categories'],
+  ['codes', 'Access Codes'],
+  ['payments', 'Online Sales'],
+  ['voting', 'Voting'],
+  ['nominations', 'Nominations'],
+  ['export', 'Export'],
+  ['audit', 'Audit Trail'],
+];
+
+function PermissionCheckboxes({ value, onChange }) {
+  // value: null = full access; otherwise { awards: bool, ... }
+  const allAccess = value === null;
+  return (
+    <div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, fontWeight: 600 }}>
+        <input type="checkbox" checked={allAccess} onChange={e => onChange(e.target.checked ? null : Object.fromEntries(ADMIN_SECTIONS.map(([k]) => [k, true])))} />
+        Full access (every section)
+      </label>
+      {!allAccess && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6, paddingLeft: 4 }}>
+          {ADMIN_SECTIONS.map(([key, label]) => (
+            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
+              <input type="checkbox" checked={value?.[key] === true}
+                onChange={e => onChange({ ...(value || {}), [key]: e.target.checked })} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CoAdminsTab() {
   const [coadmins, setCoAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
+  const [newPerms, setNewPerms] = useState(null);
   const [created, setCreated] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editPerms, setEditPerms] = useState(null);
+  const [savingPerms, setSavingPerms] = useState(false);
 
   async function load() { setLoading(true); const d = await fetch('/api/coadmins').then(r => r.json()); setCoAdmins(d.coadmins || []); setLoading(false); }
   useEffect(() => { load(); }, []);
@@ -249,8 +290,8 @@ export function CoAdminsTab() {
   async function createCoAdmin() {
     if (!newName.trim()) { toast('Enter a name'); return; }
     try {
-      const data = await api('/api/coadmins', 'POST', { name: newName.trim() });
-      setCreated(data); setNewName(''); toast(`Co-Admin ${data.name} created`); load();
+      const data = await api('/api/coadmins', 'POST', { name: newName.trim(), permissions: newPerms });
+      setCreated(data); setNewName(''); setNewPerms(null); toast(`Co-Admin ${data.name} created`); load();
     } catch (e) { toast(e.message); }
   }
   async function resetPin(id, name) {
@@ -271,15 +312,29 @@ export function CoAdminsTab() {
     try { await api(`/api/coadmins/${id}/rename`, 'POST', { name: name.trim() }); toast('Co-Admin renamed'); load(); }
     catch (e) { toast(e.message); }
   }
+  function openEdit(a) {
+    setEditingId(a.id);
+    setEditPerms(a.permissions ?? null);
+  }
+  async function savePerms(id, name) {
+    setSavingPerms(true);
+    try {
+      await api(`/api/coadmins/${id}/permissions`, 'POST', { permissions: editPerms });
+      toast(`Access updated for ${name} — ask them to log out and back in`);
+      setEditingId(null);
+      load();
+    } catch (e) { toast(e.message); }
+    setSavingPerms(false);
+  }
 
   if (loading) return <Loading />;
 
   return (
     <div>
       <div className="banner banner-gold" style={{ marginBottom: 16 }}>
-        Co-Admins can help run Overview, Awards, Access Codes, Online Sales, Nominations, Export and the Audit Trail.
-        They cannot manage Agents, cannot touch Settings (price, dates, MoMo, Paystack), and cannot create other Co-Admins —
-        only the Main Admin can do those.
+        Co-Admins can help run whichever sections you give them access to — Overview, Awards, Access Codes, Online Sales,
+        Voting, Nominations, Export and the Audit Trail. They can never touch Agents, Settings, or Co-Admin management —
+        only the Main Admin can do those. Use "Edit access" below to limit a co-admin to specific sections.
       </div>
       <div className="panel panel-pad" style={{ marginBottom: 20 }}>
         <h3 style={{ marginTop: 0 }}>Add a Co-Admin</h3>
@@ -287,6 +342,10 @@ export function CoAdminsTab() {
         <div className="two-col">
           <div className="field" style={{ marginBottom: 0 }}><label>Name</label><input type="text" placeholder="e.g. Mr. Twumasi — Awards sub-committee" value={newName} onChange={e => setNewName(e.target.value)} /></div>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={createCoAdmin}>Create co-admin →</button></div>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <label style={{ display: 'block', marginBottom: 6 }}>Access</label>
+          <PermissionCheckboxes value={newPerms} onChange={setNewPerms} />
         </div>
         {created && (
           <div className="banner banner-good" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8, marginTop: 14 }}>
@@ -300,23 +359,46 @@ export function CoAdminsTab() {
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Name</th><th>ID</th><th>Status</th><th>Last login</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name</th><th>ID</th><th>Access</th><th>Status</th><th>Last login</th><th>Actions</th></tr></thead>
           <tbody>
-            {coadmins.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No co-admins yet — create one above.</td></tr> :
+            {coadmins.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No co-admins yet — create one above.</td></tr> :
               coadmins.map(a => (
-                <tr key={a.id}>
-                  <td><strong>{a.name}</strong></td>
-                  <td className="mono">{a.id}</td>
-                  <td>{a.active ? <span className="badge badge-used">Active</span> : <span className="badge badge-inactive">Inactive</span>}</td>
-                  <td>{a.last_login_at ? new Date(a.last_login_at).toLocaleString() : 'Never'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="small-btn" onClick={() => rename(a.id, a.name)}>Rename</button>{' '}
-                    <button className="small-btn" onClick={() => resetPin(a.id, a.name)}>Reset PIN</button>{' '}
-                    {a.active
-                      ? <button className="small-btn danger" onClick={() => toggle(a.id, false)}>Deactivate</button>
-                      : <button className="small-btn good" onClick={() => toggle(a.id, true)}>Reactivate</button>}
-                  </td>
-                </tr>
+                <>
+                  <tr key={a.id}>
+                    <td><strong>{a.name}</strong></td>
+                    <td className="mono">{a.id}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {a.permissions
+                        ? ADMIN_SECTIONS.filter(([k]) => a.permissions[k]).map(([, l]) => l).join(', ') || <span style={{ color: 'var(--ink-soft)' }}>No sections</span>
+                        : 'Full access'}
+                    </td>
+                    <td>{a.active ? <span className="badge badge-used">Active</span> : <span className="badge badge-inactive">Inactive</span>}</td>
+                    <td>{a.last_login_at ? new Date(a.last_login_at).toLocaleString() : 'Never'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="small-btn" onClick={() => editingId === a.id ? setEditingId(null) : openEdit(a)}>
+                        {editingId === a.id ? 'Cancel' : 'Edit access'}
+                      </button>{' '}
+                      <button className="small-btn" onClick={() => rename(a.id, a.name)}>Rename</button>{' '}
+                      <button className="small-btn" onClick={() => resetPin(a.id, a.name)}>Reset PIN</button>{' '}
+                      {a.active
+                        ? <button className="small-btn danger" onClick={() => toggle(a.id, false)}>Deactivate</button>
+                        : <button className="small-btn good" onClick={() => toggle(a.id, true)}>Reactivate</button>}
+                    </td>
+                  </tr>
+                  {editingId === a.id && (
+                    <tr>
+                      <td colSpan={6} style={{ background: 'var(--panel-2)' }}>
+                        <div style={{ padding: '10px 4px' }}>
+                          <PermissionCheckboxes value={editPerms} onChange={setEditPerms} />
+                          <button className="btn btn-gold" style={{ marginTop: 10, padding: '8px 16px', fontSize: 13 }} disabled={savingPerms} onClick={() => savePerms(a.id, a.name)}>
+                            {savingPerms ? 'Saving…' : 'Save access'}
+                          </button>
+                          <div className="hint" style={{ marginTop: 6 }}>Takes effect next time {a.name} logs in.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
           </tbody>
         </table>
@@ -726,6 +808,7 @@ export function ExtraSettings() {
   const [paystackReady, setPaystackReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
+  const [bgBusy, setBgBusy] = useState(false);
 
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(d => {
@@ -764,7 +847,6 @@ export function ExtraSettings() {
 
   const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
 
-  const [bgBusy, setBgBusy] = useState(false);
   async function changePosterBg(file) {
     setBgBusy(true);
     try {

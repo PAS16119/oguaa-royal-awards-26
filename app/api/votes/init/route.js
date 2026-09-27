@@ -33,12 +33,8 @@ export async function POST(req) {
   const name = (body.name || '').trim();
   const email = (body.email || '').trim().toLowerCase();
   const phone = (body.phone || '').trim();
-  if (!name) return Response.json({ error: 'Please enter your name.' }, { status: 400 });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return Response.json({ error: 'Paystack needs a valid email to send your receipt.' }, { status: 400 });
-  }
-  if (phone.replace(/\D/g, '').length < 9) {
-    return Response.json({ error: 'Please enter a working phone number.' }, { status: 400 });
   }
 
   // Votes and price are computed ENTIRELY from what the server already knows
@@ -64,7 +60,7 @@ export async function POST(req) {
 
   await sql`
     INSERT INTO vote_payments (reference, candidate_id, package_id, votes, buyer_name, email, phone, amount_pesewas, currency, status)
-    VALUES (${reference}, ${candidate.id}, ${packageId}, ${votes}, ${name}, ${email}, ${phone}, ${amountPesewas}, 'GHS', 'pending')
+    VALUES (${reference}, ${candidate.id}, ${packageId}, ${votes}, ${name || null}, ${email}, ${phone || null}, ${amountPesewas}, 'GHS', 'pending')
   `;
 
   try {

@@ -1,12 +1,12 @@
 import { sql } from '@/lib/db';
-import { requireAdminLevel } from '@/lib/session';
+import { requireSection } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
 // PATCH — edit a candidate, or show/hide them on the public ballot. Admin or Co-Admin.
 export async function PATCH(req, { params }) {
-  const session = await requireAdminLevel();
+  const session = await requireSection('voting');
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const id = params.id;
@@ -29,7 +29,7 @@ export async function PATCH(req, { params }) {
 // DELETE — remove a candidate. Blocked once they have votes (deactivate
 // instead), so a paid, fundraised vote can never silently disappear.
 export async function DELETE(req, { params }) {
-  const session = await requireAdminLevel();
+  const session = await requireSection('voting');
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const id = params.id;

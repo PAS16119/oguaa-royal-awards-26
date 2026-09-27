@@ -1,11 +1,11 @@
 import { sql } from '@/lib/db';
-import { requireAdminLevel } from '@/lib/session';
+import { requireSection } from '@/lib/session';
 import { actorFromSession } from '@/lib/audit';
 import { logAudit } from '@/lib/audit';
 import { del } from '@vercel/blob';
 
 export async function DELETE(req, { params }) {
-  const session = await requireAdminLevel();
+  const session = await requireSection('nominations');
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const id = decodeURIComponent(params.id);

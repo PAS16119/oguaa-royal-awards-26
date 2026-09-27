@@ -1,12 +1,12 @@
 import { sql } from '@/lib/db';
-import { requireAdminLevel } from '@/lib/session';
+import { requireSection } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 import { slugifySectionKey } from '@/lib/catalog';
 
 export const dynamic = 'force-dynamic';
 
 async function guard() {
-  const session = await requireAdminLevel();
+  const session = await requireSection('awards');
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
   return session;
 }

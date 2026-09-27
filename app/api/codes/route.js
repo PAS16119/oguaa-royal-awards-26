@@ -1,5 +1,5 @@
 import { sql } from '@/lib/db';
-import { requireAnySession } from '@/lib/session';
+import { requireAnySession, sectionAllowed } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 import { genAccessCode } from '@/lib/codegen';
 
@@ -7,6 +7,7 @@ import { genAccessCode } from '@/lib/codegen';
 export async function GET() {
   const session = await requireAnySession();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (session.role === 'co-admin' && !sectionAllowed(session, 'codes')) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const rows = (session.role === 'main-admin' || session.role === 'co-admin')
     ? await sql`SELECT * FROM codes ORDER BY created_at DESC`
@@ -20,6 +21,7 @@ export async function GET() {
 export async function POST(req) {
   const session = await requireAnySession();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (session.role === 'co-admin' && !sectionAllowed(session, 'codes')) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const { count } = await req.json();
   const n = Math.max(1, Math.min(50, parseInt(count) || 1));

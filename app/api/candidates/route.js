@@ -1,5 +1,5 @@
 import { sql } from '@/lib/db';
-import { requireAdminLevel } from '@/lib/session';
+import { requireSection } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 import { genId, genBallotCode } from '@/lib/codegen';
 
@@ -12,7 +12,7 @@ export async function GET(req) {
   const wantAll = searchParams.get('all') === '1';
 
   if (wantAll) {
-    const session = await requireAdminLevel();
+    const session = await requireSection('voting');
     if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
     const rows = await sql`SELECT * FROM candidates ORDER BY section_label, award_name, votes DESC`;
     return Response.json({ candidates: rows });
@@ -37,7 +37,7 @@ export async function GET(req) {
 // POST — promote a paid-track nomination onto the ballot. Admin or Co-Admin.
 // Deliberately manual: nothing lands on the ballot without someone choosing it.
 export async function POST(req) {
-  const session = await requireAdminLevel();
+  const session = await requireSection('voting');
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const { nominationId } = await req.json();

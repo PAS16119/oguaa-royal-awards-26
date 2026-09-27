@@ -9,18 +9,21 @@ export async function GET() {
   const session = await requireMainAdmin();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-  const rows = await sql`SELECT id, name, active, created_at, last_login_at FROM coadmins ORDER BY name`;
+  const rows = await sql`SELECT id, name, active, created_at, last_login_at, permissions FROM coadmins ORDER BY name`;
   return Response.json({ coadmins: rows });
 }
 
 // POST: create a new co-admin. Returns the plaintext PIN once — it is never
 // retrievable again after this response. Only the Main Admin can do this,
 // so access to the committee-helper role always traces back to one person.
+// `permissions` is optional: omit it (or send null) for full access, same as
+// every co-admin created before this feature existed; send an object like
+// { awards: true, codes: false, ... } to start them narrowed from day one.
 export async function POST(req) {
   const session = await requireMainAdmin();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { name } = await req.json();
+  const { name, permissions } = await req.json();
   if (!name || !name.trim()) return Response.json({ error: 'Name is required.' }, { status: 400 });
 
   let id = genCoAdminId();
@@ -32,9 +35,10 @@ export async function POST(req) {
 
   const pin = randDigits(6);
   const pinHash = await hashPin(pin);
+  const perms = permissions && typeof permissions === 'object' ? JSON.stringify(permissions) : null;
   await sql`
-    INSERT INTO coadmins (id, name, pin_hash, active, created_at, created_by)
-    VALUES (${id}, ${name.trim()}, ${pinHash}, true, now(), 'main-admin')
+    INSERT INTO coadmins (id, name, pin_hash, active, created_at, created_by, permissions)
+    VALUES (${id}, ${name.trim()}, ${pinHash}, true, now(), 'main-admin', ${perms}::jsonb)
   `;
   await logAudit({ type: 'main-admin' }, 'coadmin_created', { coAdminId: id, coAdminName: name.trim() });
 

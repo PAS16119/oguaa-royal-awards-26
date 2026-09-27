@@ -1,5 +1,5 @@
 import { sql } from '@/lib/db';
-import { requireAnySession } from '@/lib/session';
+import { requireAnySession, sectionAllowed } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +18,7 @@ export async function GET(req, { params }) {
 export async function DELETE(req, { params }) {
   const session = await requireAnySession();
   if (!session) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  if (session.role === 'co-admin' && !sectionAllowed(session, 'codes')) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const code = decodeURIComponent(params.code).toUpperCase();
   const rows = await sql`SELECT * FROM codes WHERE code = ${code}`;

@@ -80,7 +80,7 @@ export default function AdminPage() {
   return (
     <Shell>
       {session.role === 'main-admin' || session.role === 'co-admin'
-        ? <MainAdminDashboard role={session.role} onLogout={() => setSession(null)} />
+        ? <MainAdminDashboard role={session.role} permissions={session.permissions} onLogout={() => setSession(null)} />
         : <AgentDashboard session={session} onLogout={() => setSession(null)} />}
       <Toast />
     </Shell>
@@ -189,19 +189,33 @@ function CoAdminLoginForm({ onLoggedIn }) {
 /* ========================== MAIN ADMIN DASHBOARD ========================== */
 const STORAGE_NOTE_CAP_MB = null; // no artificial cap anymore — real Postgres + Blob storage
 
-function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
+function MainAdminDashboard({ onLogout, role = 'main-admin', permissions = null }) {
   const isMainAdmin = role === 'main-admin';
+  // Main Admin, or a Co-Admin with permissions === null, sees every section
+  // (unchanged behaviour). A Co-Admin with an explicit permissions object is
+  // narrowed to just the sections marked true — matches requireSection() on
+  // the API side, so a hidden tab here is also a real 403 if somehow hit.
+  const canSee = section => isMainAdmin || !permissions || permissions[section] === true;
   const defaultTab = 'overview';
   const [tab, setTab] = useState(defaultTab);
   async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); onLogout(); }
 
   const tabs = [
-    ['overview', '📊', 'Overview'], ['awards', '🏆', 'Awards'], ['codes', '🔑', 'Access Codes'],
-    ['payments', '🛍️', 'Online Sales'], ['voting', '🗳️', 'Voting'], ['nominations', '📋', 'Nominations'], ['export', '📤', 'Export'],
+    ['overview', '📊', 'Overview'],
+    ...(canSee('awards') ? [['awards', '🏆', 'Awards']] : []),
+    ...(canSee('codes') ? [['codes', '🔑', 'Access Codes']] : []),
+    ...(canSee('payments') ? [['payments', '🛍️', 'Online Sales']] : []),
+    ...(canSee('voting') ? [['voting', '🗳️', 'Voting']] : []),
+    ...(canSee('nominations') ? [['nominations', '📋', 'Nominations']] : []),
+    ...(canSee('export') ? [['export', '📤', 'Export']] : []),
     ...(isMainAdmin ? [['agents', '🧑\u200d💼', 'Agents']] : []),
-    ['audit', '🕵️', 'Audit Trail'],
+    ...(canSee('audit') ? [['audit', '🕵️', 'Audit Trail']] : []),
     ...(isMainAdmin ? [['coadmins', '👥', 'Co-Admins'], ['settings', '⚙️', 'Settings']] : [['mypin', '🔒', 'My PIN']]),
   ];
+
+  // If the current tab isn't in the (possibly narrowed) list — e.g. access
+  // was just tightened — fall back to Overview instead of a blank pane.
+  useEffect(() => { if (!tabs.some(([k]) => k === tab)) setTab('overview'); }, [tabs.map(t => t[0]).join(',')]); // eslint-disable-line
 
   return (
     <section className="block">
@@ -220,14 +234,14 @@ function MainAdminDashboard({ onLogout, role = 'main-admin' }) {
           </nav>
           <div className="admin-content">
             {tab === 'overview' && <OverviewTab />}
-            {tab === 'awards' && <AwardsTab />}
-            {tab === 'codes' && <CodesTab role="main-admin" />}
-            {tab === 'payments' && <PaymentsTab />}
-            {tab === 'voting' && <VotingTab isMainAdmin={isMainAdmin} />}
-            {tab === 'nominations' && <NominationsTab />}
-            {tab === 'export' && <ExportTab />}
+            {tab === 'awards' && canSee('awards') && <AwardsTab />}
+            {tab === 'codes' && canSee('codes') && <CodesTab role="main-admin" />}
+            {tab === 'payments' && canSee('payments') && <PaymentsTab />}
+            {tab === 'voting' && canSee('voting') && <VotingTab isMainAdmin={isMainAdmin} />}
+            {tab === 'nominations' && canSee('nominations') && <NominationsTab />}
+            {tab === 'export' && canSee('export') && <ExportTab />}
             {isMainAdmin && tab === 'agents' && <AgentsTab />}
-            {tab === 'audit' && <AuditTab />}
+            {tab === 'audit' && canSee('audit') && <AuditTab />}
             {isMainAdmin && tab === 'coadmins' && <CoAdminsTab />}
             {isMainAdmin && tab === 'settings' && <SettingsTab />}
             {!isMainAdmin && tab === 'mypin' && <AgentPinTab />}

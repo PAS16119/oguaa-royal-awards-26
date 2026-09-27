@@ -20,6 +20,7 @@ export default function VotePage() {
 
   const [pickedId, setPickedId] = useState(null);
   const [activeSection, setActiveSection] = useState(null);
+  const [activeAward, setActiveAward] = useState(null);
   const [packageId, setPackageId] = useState('');
   const [customVotes, setCustomVotes] = useState(10);
   const [name, setName] = useState('');
@@ -47,15 +48,24 @@ export default function VotePage() {
     const code = new URLSearchParams(window.location.search).get('code');
     if (!code) return;
     const match = candidates.find(c => c.ballot_code === code);
-    if (match) { setPickedId(match.id); setActiveSection(match.section_label || 'Other'); }
+    if (match) { setPickedId(match.id); setActiveSection(match.section_label || 'Other'); setActiveAward(match.award_name || 'Other'); }
   }, [candidates]);
 
-  const grouped = {};
+  // Group -> Category (award) -> nominees, matching how the ballot is
+  // actually organised (e.g. "Senior Student" group contains the "Fine Girl
+  // of the Year" category, which has its own nominees).
+  const groups = {};
   (candidates || []).forEach(c => {
-    const key = c.section_label || 'Other';
-    (grouped[key] = grouped[key] || []).push(c);
+    const g = c.section_label || 'Other';
+    const a = c.award_name || 'Other';
+    groups[g] = groups[g] || {};
+    (groups[g][a] = groups[g][a] || []).push(c);
   });
-  Object.values(grouped).forEach(list => list.sort((a, b) => b.votes - a.votes));
+  Object.values(groups).forEach(cats => Object.values(cats).forEach(list => list.sort((a, b) => b.votes - a.votes)));
+
+  const groupNomineeCount = g => Object.values(groups[g] || {}).reduce((n, list) => n + list.length, 0);
+  const activeCats = activeSection ? groups[activeSection] : null;
+  const activeNominees = activeSection && activeAward ? groups[activeSection]?.[activeAward] : null;
 
   const picked = (candidates || []).find(c => c.id === pickedId);
   const pkg = packages.find(p => p.id === packageId);
@@ -76,9 +86,7 @@ export default function VotePage() {
 
   async function pay() {
     setErr('');
-    if (!name.trim()) { setErr('Please enter your name.'); return; }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setErr('Please enter a valid email.'); return; }
-    if (phone.replace(/\D/g, '').length < 9) { setErr('Please enter a working phone number.'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setErr('Please enter a valid email — it\'s where your receipt goes.'); return; }
 
     try { localStorage.setItem(VOTER_KEY, JSON.stringify({ name: name.trim(), email: email.trim(), phone: phone.trim() })); } catch {}
 
@@ -136,19 +144,19 @@ export default function VotePage() {
             </div>
           )}
 
-          {!closedMsg && !picked && !activeSection && Object.keys(grouped).length > 0 && (
+          {!closedMsg && !picked && !activeSection && Object.keys(groups).length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-              {Object.keys(grouped).map(section => (
+              {Object.keys(groups).map(g => (
                 <button
-                  key={section}
+                  key={g}
                   className="panel panel-pad"
                   style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
-                  onClick={() => setActiveSection(section)}
+                  onClick={() => setActiveSection(g)}
                 >
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{section}</div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{g}</div>
                     <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>
-                      {grouped[section].length} nominee{grouped[section].length === 1 ? '' : 's'}
+                      {Object.keys(groups[g]).length} categor{Object.keys(groups[g]).length === 1 ? 'y' : 'ies'} · {groupNomineeCount(g)} nominee{groupNomineeCount(g) === 1 ? '' : 's'}
                     </div>
                   </div>
                   <span style={{ fontSize: 18, color: 'var(--gold, #c9a227)' }}>→</span>
@@ -157,19 +165,43 @@ export default function VotePage() {
             </div>
           )}
 
-          {!closedMsg && !picked && activeSection && grouped[activeSection] && (
+          {!closedMsg && !picked && activeSection && !activeAward && activeCats && (
             <div>
-              <button className="small-btn" style={{ marginBottom: 16 }} onClick={() => setActiveSection(null)}>← All categories</button>
+              <button className="small-btn" style={{ marginBottom: 16 }} onClick={() => setActiveSection(null)}>← All groups</button>
               <h3 style={{ margin: '0 0 12px' }}>{activeSection}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                {grouped[activeSection].map(c => (
+                {Object.keys(activeCats).map(a => (
+                  <button
+                    key={a}
+                    className="panel panel-pad"
+                    style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
+                    onClick={() => setActiveAward(a)}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{a}</div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>
+                        {activeCats[a].length} nominee{activeCats[a].length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 18, color: 'var(--gold, #c9a227)' }}>→</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!closedMsg && !picked && activeSection && activeAward && activeNominees && (
+            <div>
+              <button className="small-btn" style={{ marginBottom: 16 }} onClick={() => setActiveAward(null)}>← {activeSection}</button>
+              <h3 style={{ margin: '0 0 12px' }}>{activeAward}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+                {activeNominees.map(c => (
                   <div key={c.id} className="panel panel-pad" style={{ textAlign: 'center' }}>
                     {c.photo_url
                       ? <img src={c.photo_url} alt={c.nominee_name} style={{ width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', margin: '0 auto 10px' }} />
                       : <div style={{ width: 88, height: 88, borderRadius: '50%', background: 'var(--panel-2)', margin: '0 auto 10px' }} />}
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{c.nominee_name}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 6 }}>{c.award_name}</div>
-                    <div className="badge badge-used" style={{ marginBottom: 10 }}>{c.votes === null ? 'Vote now' : `${c.votes} vote${c.votes === 1 ? '' : 's'}`}</div>
+                    <div className="badge badge-used" style={{ margin: '6px 0 10px' }}>{c.votes === null ? 'Vote now' : `${c.votes} vote${c.votes === 1 ? '' : 's'}`}</div>
                     <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', fontSize: 13 }}
                       onClick={() => { setPickedId(c.id); setErr(''); }}>
                       Vote →
@@ -182,7 +214,7 @@ export default function VotePage() {
 
           {picked && (
             <div className="panel panel-pad">
-              <button className="small-btn" style={{ marginBottom: 14 }} onClick={() => setPickedId(null)}>← Back to {activeSection || 'candidates'}</button>
+              <button className="small-btn" style={{ marginBottom: 14 }} onClick={() => setPickedId(null)}>← Back to {activeAward || 'candidates'}</button>
               <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 18 }}>
                 {picked.photo_url
                   ? <img src={picked.photo_url} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }} />
@@ -223,17 +255,17 @@ export default function VotePage() {
 
               <div className="divider-label">your details</div>
               <div className="field">
-                <label>Your name *</label>
+                <label>Your name (optional)</label>
                 <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ama Mensah" />
               </div>
               <div className="two-col">
                 <div className="field">
                   <label>Email *</label>
                   <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
-                  <div className="hint">Paystack sends your receipt here.</div>
+                  <div className="hint">Required — Paystack sends your receipt here.</div>
                 </div>
                 <div className="field">
-                  <label>Phone *</label>
+                  <label>Phone (optional)</label>
                   <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0XX XXX XXXX" />
                 </div>
               </div>
