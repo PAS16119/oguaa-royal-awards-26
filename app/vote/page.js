@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shell, Seal, Toast, toast } from '../components';
+import { Shell, Seal, Toast, toast, CandidateSearch } from '../components';
 
 const VOTER_KEY = 'ora_voter';
 
@@ -142,6 +142,20 @@ export default function VotePage() {
             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
               Voting hasn't opened yet — check back once the ballot is announced.
             </div>
+          )}
+
+          {!closedMsg && !picked && candidates.length > 0 && (
+            <CandidateSearch
+              candidates={candidates}
+              placeholder="Search a nominee by name to vote…"
+              onSelect={c => {
+                setPickedId(c.id);
+                setActiveSection(c.section_label || 'Other');
+                setActiveAward(c.award_name || 'Other');
+                setErr('');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
           )}
 
           {!closedMsg && !picked && !activeSection && Object.keys(groups).length > 0 && (

@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Shell, Toast } from '../../components';
+import { Shell, Toast, CandidateSearch } from '../../components';
 
 export default function VoteResultsPage() {
   const [candidates, setCandidates] = useState(null);
   const [totals, setTotals] = useState(null);
+  const [focusId, setFocusId] = useState(null);
 
   useEffect(() => {
     fetch('/api/candidates').then(r => r.json()).then(d => setCandidates(d.candidates || [])).catch(() => setCandidates([]));
@@ -30,6 +31,11 @@ export default function VoteResultsPage() {
     Object.values(awards).forEach(list => list.sort((a, b) => (b.votes ?? 0) - (a.votes ?? 0)));
   });
 
+  const focused = (candidates || []).find(c => c.id === focusId) || null;
+  const visibleSections = focused
+    ? { [focused.section_label || 'Other']: { [focused.award_name || 'Other']: sections[focused.section_label || 'Other']?.[focused.award_name || 'Other'] || [] } }
+    : sections;
+
   return (
     <Shell>
       <section className="block">
@@ -54,15 +60,29 @@ export default function VoteResultsPage() {
             </div>
           )}
 
+          {!resultsHidden && candidates && candidates.length > 0 && (
+            <CandidateSearch
+              candidates={candidates}
+              placeholder="Find a nominee to see where they stand…"
+              onSelect={c => setFocusId(c.id)}
+            />
+          )}
+
+          {focused && (
+            <div style={{ marginBottom: 16 }}>
+              <button className="small-btn" onClick={() => setFocusId(null)}>← Show the full leaderboard</button>
+            </div>
+          )}
+
           {candidates === null ? (
             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
           ) : candidates.length === 0 ? (
             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
-          ) : resultsHidden ? null : Object.keys(sections).map(section => (
+          ) : resultsHidden ? null : Object.keys(visibleSections).map(section => (
             <div key={section} style={{ marginBottom: 24 }}>
               <h3 style={{ marginBottom: 10 }}>{section}</h3>
-              {Object.keys(sections[section]).map(award => {
-                const list = sections[section][award];
+              {Object.keys(visibleSections[section]).map(award => {
+                const list = visibleSections[section][award];
                 const max = list[0].votes || 1;
                 return (
                   <div key={award} className="panel panel-pad" style={{ marginBottom: 12 }}>
@@ -70,7 +90,7 @@ export default function VoteResultsPage() {
                     {list.map((c, i) => {
                       const pct = Math.max(4, Math.round((c.votes / max) * 100));
                       return (
-                        <div key={c.id} style={{ marginBottom: 12 }}>
+                        <div key={c.id} style={{ marginBottom: 12, padding: c.id === focusId ? '6px 8px' : 0, borderRadius: 8, background: c.id === focusId ? 'rgba(201,162,39,.16)' : 'transparent' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                               <span style={{ color: 'var(--ink-soft)', fontSize: 11.5 }}>#{i + 1}</span>

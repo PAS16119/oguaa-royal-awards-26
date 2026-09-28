@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { toast, compressImageFile, uploadPhotoDataUrl } from '../components';
+import { toast, compressImageFile, uploadPhotoDataUrl, matchCandidates } from '../components';
 import PosterCard from '../vote/poster/PosterCard';
 
 function Loading() {
@@ -432,6 +432,7 @@ function BallotTab() {
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [posterFor, setPosterFor] = useState(null);
+  const [ballotSearch, setBallotSearch] = useState('');
 
   async function load() {
     setLoading(true);
@@ -478,14 +479,24 @@ function BallotTab() {
 
   if (loading) return <Loading />;
 
+  const shownPending = matchCandidates(pending, ballotSearch);
+  const shownCandidates = matchCandidates(candidates, ballotSearch);
+
   return (
     <div>
+      <input
+        type="search"
+        value={ballotSearch}
+        onChange={e => setBallotSearch(e.target.value)}
+        placeholder="🔍 Search by name, ballot code, class or category…"
+        style={{ width: '100%', boxSizing: 'border-box', padding: '11px 14px', fontSize: 14, border: '1.5px solid var(--parchment-2)', borderRadius: 10, marginBottom: 16 }}
+      />
       <div className="banner banner-gold" style={{ marginBottom: 16 }}>
         Only paid-track nominations you explicitly add here can be voted for — nothing lands on the ballot automatically.
       </div>
 
       <div className="panel panel-pad" style={{ marginBottom: 20 }}>
-        <h3 style={{ marginTop: 0 }}>Paid nominations awaiting the ballot ({pending.length})</h3>
+        <h3 style={{ marginTop: 0 }}>Paid nominations awaiting the ballot ({ballotSearch ? `${shownPending.length} of ${pending.length}` : pending.length})</h3>
         {pending.length === 0 ? (
           <p style={{ color: 'var(--ink-soft)', fontSize: 13 }}>Nothing waiting — every paid nomination is either already on the ballot, or there are none yet.</p>
         ) : (
@@ -493,7 +504,7 @@ function BallotTab() {
             <table>
               <thead><tr><th>Nominee</th><th>Category</th><th></th></tr></thead>
               <tbody>
-                {pending.map(n => (
+                {shownPending.map(n => (
                   <tr key={n.id}>
                     <td>{n.nominee_name}</td>
                     <td>{n.category}</td>
@@ -507,7 +518,7 @@ function BallotTab() {
       </div>
 
       <div className="panel panel-pad">
-        <h3 style={{ marginTop: 0 }}>Current ballot ({candidates.length})</h3>
+        <h3 style={{ marginTop: 0 }}>Current ballot ({ballotSearch ? `${shownCandidates.length} of ${candidates.length}` : candidates.length})</h3>
         <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', marginTop: -6 }}>
           Each candidate's <strong>Code</strong> is what supporters dial into the USSD voting menu — print it on
           posters/flyers next to their name and photo.
@@ -516,8 +527,8 @@ function BallotTab() {
           <table>
             <thead><tr><th></th><th>Code</th><th>Candidate</th><th>Category</th><th>Votes</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {candidates.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No candidates yet.</td></tr> :
-                candidates.map(c => (
+              {shownCandidates.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>{candidates.length === 0 ? 'No candidates yet.' : 'No candidate matches that search.'}</td></tr> :
+                shownCandidates.map(c => (
                   <tr key={c.id} style={{ opacity: c.active ? 1 : 0.55 }}>
                     <td>
                       {c.photo_url

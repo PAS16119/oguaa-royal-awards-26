@@ -12,15 +12,30 @@
 // lets the image keep its own true 1:1 aspect ratio always, while the grid
 // row grows to fit whichever is taller (the image, or a long name).
 export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(voteUrl)}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(voteUrl)}`;
+  const dial = shortcode || '*928*135#';
+  // Just the site's host ("ora26.vercel.app") for the small line under the QR.
+  let siteHost = 'ora26.vercel.app';
+  try { siteHost = new URL(voteUrl).host || siteHost; } catch (e) { /* keep default */ }
+
+  // The USSD path, matching the live flow: welcome -> 1 (Vote) -> candidate
+  // code -> confirm name -> number of votes -> pay.
+  const steps = [
+    <>Dial <b style={{ color: 'var(--gold-light)', fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>{dial}</b></>,
+    <>Select <b style={{ color: 'var(--gold-light)' }}>1</b> to Vote</>,
+    <>Enter the <b style={{ color: 'var(--gold-light)' }}>nominee code</b> shown below</>,
+    <>Confirm the <b style={{ color: 'var(--gold-light)' }}>nominee's name</b></>,
+    <>Enter number of votes &amp; approve payment</>,
+  ];
 
   return (
     <div
       id="poster-card"
       style={{
         display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr)',
         width: '100%',
-        maxWidth: 440,
+        maxWidth: 480,
         margin: '0 auto',
         borderRadius: 22,
         overflow: 'hidden',
@@ -61,39 +76,39 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
       {/* Content layer — normal flow, so it's exactly as tall as it needs
           to be. Shares the same grid cell as the image above, so it always
           overlays it rather than being pushed below. */}
-      <div style={{ gridArea: '1 / 1', position: 'relative', display: 'flex', flexDirection: 'column', padding: '20px 22px 18px', minHeight: '100%' }}>
+      <div style={{ gridArea: '1 / 1', position: 'relative', display: 'flex', flexDirection: 'column', padding: '22px 24px 22px', minHeight: '100%' }}>
 
         {/* Top: event logo */}
         <div style={{ textAlign: 'center', flex: '0 0 auto' }}>
-          <img src="/logo-mark.png" alt="Oguaa Royal Awards" style={{ height: 42, width: 'auto', objectFit: 'contain' }} />
-          <div style={{ fontSize: 9.5, letterSpacing: 2.2, textTransform: 'uppercase', color: 'var(--gold-light)', fontWeight: 700, marginTop: 4 }}>
+          <img src="/logo-mark.png" alt="Oguaa Royal Awards" style={{ height: 56, width: 'auto', objectFit: 'contain' }} />
+          <div style={{ fontSize: 13, letterSpacing: 2.4, textTransform: 'uppercase', color: 'var(--gold-light)', fontWeight: 700, marginTop: 6 }}>
             Vote Now — Every Vote Counts
           </div>
         </div>
 
         {/* Middle: name/category (left) + oval photo (right) */}
-        <div style={{ flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0' }}>
+        <div style={{ flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: 16, padding: '14px 0 16px' }}>
           <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-            <h2 style={{ margin: '0 0 8px', fontSize: 19, lineHeight: 1.22 }}>{candidate.nominee_name}</h2>
-            <div style={{ display: 'inline-block', background: 'rgba(212,175,55,0.16)', border: '1px solid rgba(212,175,55,0.4)', color: 'var(--gold-light)', fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 999 }}>
+            <h2 style={{ margin: '0 0 10px', fontSize: 28, lineHeight: 1.18 }}>{candidate.nominee_name}</h2>
+            <div style={{ display: 'inline-block', background: 'rgba(212,175,55,0.16)', border: '1px solid rgba(212,175,55,0.4)', color: 'var(--gold-light)', fontSize: 15, fontWeight: 700, padding: '6px 14px', borderRadius: 999 }}>
               {candidate.award_name}
             </div>
           </div>
           <div style={{
-            flex: '0 0 auto', width: 108, height: 138, borderRadius: '50%', padding: 5,
+            flex: '0 0 auto', width: 172, height: 216, borderRadius: '50%', padding: 6,
             background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 55%, var(--gold-deep))',
           }}>
             {candidate.photo_url ? (
               <img
                 src={candidate.photo_url}
                 alt={candidate.nominee_name}
-                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', display: 'block', border: '3px solid var(--royal-3)' }}
+                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', display: 'block', border: '4px solid var(--royal-3)' }}
               />
             ) : (
               <div style={{
                 width: '100%', height: '100%', borderRadius: '50%', border: '3px solid var(--royal-3)',
                 background: 'var(--royal-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, color: 'var(--gold-light)',
+                fontFamily: "'Playfair Display', serif", fontSize: 48, fontWeight: 700, color: 'var(--gold-light)',
               }}>
                 {initials(candidate.nominee_name)}
               </div>
@@ -101,23 +116,42 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
           </div>
         </div>
 
-        {/* Bottom: dial code + QR, side by side */}
+        {/* How to vote by phone */}
+        <div style={{ flex: '0 0 auto', background: 'rgba(23,18,51,0.72)', border: '1px solid rgba(212,175,55,0.4)', borderRadius: 16, padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+            <div style={{ fontSize: 14, letterSpacing: 1.6, textTransform: 'uppercase', color: 'var(--gold-light)', fontWeight: 800 }}>How to vote</div>
+            <div style={{ fontSize: 12.5, color: 'rgba(251,246,234,0.75)' }}>any phone, no data needed</div>
+          </div>
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 9 }}>
+            {steps.map((s, i) => (
+              <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 17, lineHeight: 1.25, color: 'var(--parchment)' }}>
+                <span style={{
+                  flex: '0 0 auto', width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 15, fontWeight: 800, color: 'var(--royal-3)',
+                  background: 'linear-gradient(135deg,var(--gold-light),var(--gold) 60%,var(--gold-deep))',
+                }}>{i + 1}</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {/* Bottom: nominee code + QR, side by side */}
         <div style={{ flex: '0 0 auto', display: 'flex', gap: 12 }}>
-          <div style={{ flex: '1 1 0', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(212,175,55,0.35)', borderRadius: 14, padding: '12px 10px', textAlign: 'center' }}>
-            <div style={{ fontSize: 9.5, letterSpacing: 1.3, textTransform: 'uppercase', color: 'rgba(251,246,234,0.65)', marginBottom: 6 }}>Dial to vote</div>
-            {shortcode && <div style={{ fontSize: 11, color: 'var(--gold-light)', marginBottom: 5, fontWeight: 700 }}>{shortcode}</div>}
+          <div style={{ flex: '1 1 0', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(212,175,55,0.35)', borderRadius: 16, padding: '12px 12px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ fontSize: 13, letterSpacing: 1.6, textTransform: 'uppercase', color: 'rgba(251,246,234,0.8)', marginBottom: 8, fontWeight: 700 }}>Nominee code</div>
             <div style={{
-              fontFamily: "'JetBrains Mono', monospace", fontWeight: 800, fontSize: 24, letterSpacing: 2.5,
+              fontFamily: "'JetBrains Mono', monospace", fontWeight: 800, fontSize: 46, letterSpacing: 4, lineHeight: 1.1,
               color: 'var(--royal-3)', background: 'linear-gradient(135deg,var(--gold-light),var(--gold) 60%,var(--gold-deep))',
-              borderRadius: 9, padding: '5px 4px',
+              borderRadius: 11, padding: '8px 4px',
             }}>
               {candidate.ballot_code}
             </div>
-            <div style={{ fontSize: 9, color: 'rgba(251,246,234,0.6)', marginTop: 6 }}>any phone, no data needed</div>
           </div>
-          <div style={{ flex: '0 0 auto', width: 100, background: '#fff', borderRadius: 14, padding: 8, textAlign: 'center' }}>
-            <img src={qrSrc} alt="Scan to vote online" width={84} height={84} style={{ display: 'block', margin: '0 auto', borderRadius: 5 }} />
-            <div style={{ fontSize: 8.5, color: 'var(--royal-3)', marginTop: 5, fontWeight: 600 }}>scan to vote</div>
+          <div style={{ flex: '0 0 auto', width: 148, background: '#fff', borderRadius: 16, padding: 9, textAlign: 'center' }}>
+            <img src={qrSrc} alt="Scan to vote online" width={130} height={130} style={{ display: 'block', margin: '0 auto', borderRadius: 6 }} />
+            <div style={{ fontSize: 13, color: 'var(--royal-3)', marginTop: 5, fontWeight: 800 }}>scan to vote online</div>
+            <div style={{ fontSize: 11.5, color: 'var(--royal-3)', opacity: 0.75, fontWeight: 600 }}>{siteHost}</div>
           </div>
         </div>
       </div>
