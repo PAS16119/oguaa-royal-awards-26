@@ -62,16 +62,36 @@ export async function PATCH(req) {
     return Response.json({ ok: true });
   }
 
+  const newSectionKey = b.sectionKey ?? cur.section_key;
+
   await sql`
     UPDATE awards SET
       name      = ${b.name ?? cur.name},
       notes     = ${b.notes ?? cur.notes},
       nominable = ${typeof b.nominable === 'boolean' ? b.nominable : cur.nominable},
       active    = ${typeof b.active === 'boolean' ? b.active : cur.active},
-      section_key = ${b.sectionKey ?? cur.section_key}
+      section_key = ${newSectionKey}
     WHERE id = ${b.id}
   `;
-  await logAudit(actorFromSession(session), 'award_updated', { id: b.id });
+
+  // Group and award name are copied onto each nomination/candidate at the
+  // moment it's created (so a poster or ballot entry never silently changes
+  // under someone), so moving the award here has to be pushed out to every
+  // row that already copied the old group — otherwise candidates nominated
+  // before the move stay filed under a group that no longer lists this
+  // award, splitting one category across two groups on the vote page.
+  if (newSectionKey !== cur.section_key) {
+    const secRows = await sql`SELECT label FROM award_sections WHERE key = ${newSectionKey}`;
+    const newLabel = secRows[0]?.label || newSectionKey;
+
+    await sql`UPDATE candidates SET section_key = ${newSectionKey}, section_label = ${newLabel} WHERE award_id = ${b.id}`;
+    await sql`
+      UPDATE nominations SET section_key = ${newSectionKey}, section_label = ${newLabel}
+      WHERE category = ${cur.name} AND section_key = ${cur.section_key}
+    `;
+  }
+
+  await logAudit(actorFromSession(session), 'award_updated', { id: b.id, movedFrom: cur.section_key, movedTo: newSectionKey });
   return Response.json({ ok: true });
 }
 
