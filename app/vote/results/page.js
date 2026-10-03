@@ -2,24 +2,31 @@
 import { useEffect, useState } from 'react';
 import { Shell, Toast, CandidateSearch } from '../../components';
 
+const MODE_NOTE = {
+  closed: 'Showing the current ranking in each category.',
+  percent: 'Each nominee’s share of the votes in their category. Updated live.',
+  full: 'Votes per nominee in each category. Updated the moment a vote is confirmed.',
+};
+const MODE_LABEL = { closed: 'Closed — ranking only', percent: 'Percentages', full: 'Full votes' };
+
 // Per-category results. Total votes and money raised are NOT shown here to the
-// public — only an admin who is logged in gets that banner (the API only sends
-// the numbers to admins).
+// public — only a logged-in admin gets that banner (the API only sends the
+// numbers to admins). What the public sees per nominee depends on the mode the
+// Main Admin chose: closed (ranking only) | percent | full.
 export default function VoteResultsPage() {
-  const [candidates, setCandidates] = useState(null);
-  const [showScores, setShowScores] = useState(true);
+  const [data, setData] = useState(null);
   const [adminTotals, setAdminTotals] = useState(null);
   const [focusId, setFocusId] = useState(null);
 
   useEffect(() => {
-    fetch('/api/candidates').then(r => r.json()).then(d => {
-      setCandidates(d.candidates || []);
-      setShowScores(d.showScores !== false);
-    }).catch(() => setCandidates([]));
+    fetch('/api/candidates').then(r => r.json()).then(setData).catch(() => setData({ candidates: [], mode: 'closed' }));
     fetch('/api/public/summary').then(r => r.json()).then(d => {
       if (typeof d.votesTotal === 'number') setAdminTotals(d);
     }).catch(() => {});
   }, []);
+
+  const candidates = data ? data.candidates || [] : null;
+  const mode = data?.mode || 'closed';
 
   const sections = {};
   (candidates || []).forEach(c => {
@@ -29,8 +36,8 @@ export default function VoteResultsPage() {
     sections[sectionKey][awardKey] = sections[sectionKey][awardKey] || [];
     sections[sectionKey][awardKey].push(c);
   });
-  // Order by the server-computed rank (works with or without scores); anyone
-  // without a rank yet (no votes) goes last, alphabetically.
+  // Order by the server-computed rank (works in every mode); anyone without a
+  // rank yet (no votes) goes last, alphabetically.
   Object.values(sections).forEach(awards => {
     Object.values(awards).forEach(list => list.sort((a, b) =>
       (a.rank ?? 9999) - (b.rank ?? 9999) || a.nominee_name.localeCompare(b.nominee_name)));
@@ -50,15 +57,16 @@ export default function VoteResultsPage() {
               <span className="section-tag">Results</span>
               <h2>Voting results by category</h2>
               <div className="sub">
-                {showScores ? 'Updated the moment a vote is confirmed.' : 'Showing the current ranking in each category.'}
+                {MODE_NOTE[mode]}
                 {' · '}<a href="/vote/winners" style={{ color: 'inherit', textDecoration: 'underline' }}>Winners only →</a>
               </div>
             </div>
           </div>
 
-          {adminTotals && (
+          {data?.viewerIsAdmin && (
             <div className="banner banner-gold" style={{ marginBottom: 20 }}>
-              🔒 Admin only: {adminTotals.votesTotal} votes cast · GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)} raised
+              🔒 Admin only: {adminTotals ? <>{adminTotals.votesTotal} votes cast · GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)} raised. </> : null}
+              You see full votes here; the public currently sees: <strong style={{ marginLeft: 4 }}>{MODE_LABEL[data.publicMode] || data.publicMode}</strong>.
             </div>
           )}
 
@@ -85,30 +93,39 @@ export default function VoteResultsPage() {
               <h3 style={{ marginBottom: 10 }}>{section}</h3>
               {Object.keys(visibleSections[section]).map(award => {
                 const list = visibleSections[section][award];
-                const max = (showScores && list[0]?.votes) || 1;
+                const maxVotes = (mode === 'full' && list[0]?.votes) || 1;
+                const tight = list.some(c => c.tight);
                 return (
                   <div key={award} className="panel panel-pad" style={{ marginBottom: 12 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 10 }}>{award}</div>
-                    {list.map(c => (
-                      <div key={c.id} style={{ marginBottom: 12, padding: c.id === focusId ? '6px 8px' : 0, borderRadius: 8, background: c.id === focusId ? 'rgba(201,162,39,.16)' : 'transparent' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: showScores ? 4 : 0 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ color: 'var(--ink-soft)', fontSize: 11.5 }}>{c.rank ? `#${c.rank}` : '–'}</span>
-                            {c.photo_url && (
-                              <img src={c.photo_url} alt="" width={22} height={22}
-                                   style={{ borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', flex: 'none' }} />
-                            )}
-                            {c.rank === 1 ? '🏆 ' : ''}{c.nominee_name}
-                          </span>
-                          {showScores && <strong>{c.votes}</strong>}
-                        </div>
-                        {showScores && (
-                          <div style={{ height: 8, borderRadius: 6, background: 'var(--panel-2)', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${Math.max(4, Math.round((c.votes / max) * 100))}%`, background: 'var(--gold, #c9a227)', borderRadius: 6 }} />
+                    <div style={{ fontWeight: 600, marginBottom: 10, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <span>{award}</span>
+                      {tight && <span style={{ fontSize: 12, fontWeight: 700, color: '#b45309' }}>🔥 Neck and neck at the top</span>}
+                    </div>
+                    {list.map(c => {
+                      const showBar = mode === 'full' || mode === 'percent';
+                      const barPct = mode === 'full' ? Math.round(((c.votes || 0) / maxVotes) * 100) : (c.percent || 0);
+                      return (
+                        <div key={c.id} style={{ marginBottom: 12, padding: c.id === focusId ? '6px 8px' : 0, borderRadius: 8, background: c.id === focusId ? 'rgba(201,162,39,.16)' : 'transparent' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: showBar ? 4 : 0 }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ color: 'var(--ink-soft)', fontSize: 11.5, minWidth: 18 }}>{c.rank ? `#${c.rank}` : '–'}</span>
+                              {c.photo_url && (
+                                <img src={c.photo_url} alt="" width={22} height={22}
+                                     style={{ borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', flex: 'none' }} />
+                              )}
+                              {c.rank === 1 ? '🏆 ' : ''}{c.nominee_name}
+                            </span>
+                            {mode === 'full' && <strong>{c.votes}</strong>}
+                            {mode === 'percent' && <strong>{c.percent}%</strong>}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          {showBar && (
+                            <div style={{ height: 8, borderRadius: 6, background: 'var(--panel-2)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${Math.max(c.rank ? 4 : 0, barPct)}%`, background: 'var(--gold, #c9a227)', borderRadius: 6 }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}

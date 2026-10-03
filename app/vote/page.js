@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast, CandidateSearch } from '../components';
+import { useNow, fmtRemaining } from '../countdown';
 
 const VOTER_KEY = 'ora_voter';
 
@@ -13,6 +14,7 @@ function fmtDate(d) {
 
 export default function VotePage() {
   const router = useRouter();
+  const nowMs = useNow();
   const [candidates, setCandidates] = useState(null);
   const [packages, setPackages] = useState([]);
   const [config, setConfig] = useState(null);
@@ -132,6 +134,18 @@ export default function VotePage() {
             🗳️ <a href="/vote/results" style={{ color: 'inherit', textDecoration: 'underline' }}>See results by category →</a>
           </div>
 
+          {!closedMsg && config?.voting_close_date && config.show_countdown !== false && (() => {
+            const left = new Date(String(config.voting_close_date).slice(0, 10) + 'T23:59:59').getTime() - nowMs;
+            const txt = fmtRemaining(left);
+            if (!txt) return null;
+            const final = left < 48 * 3600 * 1000;
+            return (
+              <div className="banner banner-gold" style={{ marginBottom: 20, fontWeight: final ? 700 : 500 }}>
+                ⏳ Voting closes in <strong style={{ margin: '0 4px' }}>{txt}</strong>{final ? ' — final hours, make every vote count!' : ''}
+              </div>
+            );
+          })()}
+
           {closedMsg && <div className="banner banner-bad" style={{ marginBottom: 20 }}>{closedMsg}</div>}
 
           {!closedMsg && candidates.length === 0 && (
@@ -191,6 +205,7 @@ export default function VotePage() {
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{a}</div>
                       <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 4 }}>
                         {activeCats[a].length} nominee{activeCats[a].length === 1 ? '' : 's'}
+                        {activeCats[a].some(c => c.tight) && <span style={{ marginLeft: 8, color: '#b45309', fontWeight: 700 }}>🔥 Neck and neck</span>}
                       </div>
                     </div>
                     <span style={{ fontSize: 18, color: 'var(--gold, #c9a227)' }}>→</span>
@@ -212,6 +227,7 @@ export default function VotePage() {
                       : <div style={{ width: 88, height: 88, borderRadius: '50%', background: 'var(--panel-2)', margin: '0 auto 10px' }} />}
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{c.nominee_name}</div>
                     <div className="badge badge-used" style={{ margin: '6px 0 10px' }}>{c.votes === null ? 'Vote now' : `${c.votes} vote${c.votes === 1 ? '' : 's'}`}</div>
+                    {c.tight && <div style={{ fontSize: 11.5, fontWeight: 700, color: '#b45309', margin: '-4px 0 8px' }}>🔥 Neck and neck</div>}
                     <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', fontSize: 13 }}
                       onClick={() => { setPickedId(c.id); setErr(''); }}>
                       Vote →
@@ -244,10 +260,14 @@ export default function VotePage() {
                         className={`panel panel-pad`}
                         style={{ textAlign: 'center', cursor: 'pointer', border: packageId === p.id ? '2px solid var(--gold, #c9a227)' : undefined }}
                         onClick={() => setPackageId(packageId === p.id ? '' : p.id)}>
+                        {p.promo_label && <div style={{ fontSize: 11, fontWeight: 800, color: '#b45309', marginBottom: 2 }}>🔥 {p.promo_label}</div>}
                         <div style={{ fontWeight: 700, fontSize: 13 }}>{p.label}</div>
                         <div style={{ fontSize: 20, fontWeight: 800, margin: '4px 0' }}>{p.votes}</div>
                         <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>votes</div>
                         <div style={{ fontSize: 13, marginTop: 6 }}>GH₵{Number(p.price_ghs).toFixed(2)}</div>
+                        {p.available_until && fmtRemaining(new Date(p.available_until).getTime() - nowMs) && (
+                          <div style={{ fontSize: 11, color: '#b45309', marginTop: 4 }}>⏳ ends in {fmtRemaining(new Date(p.available_until).getTime() - nowMs)}</div>
+                        )}
                       </button>
                     ))}
                   </div>

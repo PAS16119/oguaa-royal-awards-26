@@ -411,24 +411,52 @@ export function CoAdminsTab() {
 }
 
 /* =========================================================== VOTING ===== */
-function ResultsSwitch() {
-  const [open, setOpen] = useState(null);
+const RESULT_CHOICES = [
+  ['closed', '🔒 Closed', 'Public sees each category’s ranking only — no votes, no percentages'],
+  ['percent', '📊 Percentages', 'Ranking plus each nominee’s % share of their category'],
+  ['full', '🔓 Full votes', 'Ranking plus each nominee’s vote count'],
+];
+
+// One place for everything the Main Admin controls about what the public sees.
+// Total votes and money raised are admin-only in EVERY mode — this switch only
+// changes what voters see per nominee inside a category.
+function ResultsControl() {
+  const [cfg, setCfg] = useState(null);
   useEffect(() => {
-    fetch('/api/config').then(r => r.json()).then(d => setOpen(d.config?.results_public !== false)).catch(() => {});
+    fetch('/api/config').then(r => r.json()).then(d => setCfg(d.config || {})).catch(() => {});
   }, []);
-  async function flip() {
-    const next = !open;
-    try {
-      await api('/api/config', 'POST', { resultsPublic: next });
-      setOpen(next);
-      toast(next ? 'Results are now OPEN — public sees vote counts' : 'Results are now CLOSED — public sees ranking only');
-    } catch (e) { toast(e.message); }
+  if (!cfg) return null;
+  const mode = ['closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
+  const raceBadge = cfg.show_race_badge !== false;
+  const countdown = cfg.show_countdown !== false;
+
+  async function save(patch, local, msg) {
+    try { await api('/api/config', 'POST', patch); setCfg(c => ({ ...c, ...local })); toast(msg); }
+    catch (e) { toast(e.message); }
   }
-  if (open === null) return null;
+  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' },
+    m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
+
   return (
-    <div className={`banner ${open ? 'banner-good' : 'banner-bad'}`} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <span>{open ? '🔓 Results OPEN — public sees each nominee\'s votes' : '🔒 Results CLOSED — public sees ranking only, no scores'}</span>
-      <button className="btn btn-gold" style={{ fontSize: 13 }} onClick={flip}>{open ? 'Close results' : 'Open results'}</button>
+    <div className="panel panel-pad" style={{ marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>What the public sees in each category</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8, margin: '10px 0' }}>
+        {RESULT_CHOICES.map(([m, label, hint]) => (
+          <button key={m} className={mode === m ? 'btn btn-gold' : 'small-btn'} style={{ justifyContent: 'center', textAlign: 'center', padding: '10px 8px', lineHeight: 1.3 }}
+            onClick={() => mode !== m && setMode(m)} title={hint}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="hint" style={{ marginBottom: 10 }}>{RESULT_CHOICES.find(c => c[0] === mode)?.[2]}. Total votes and money raised are always admin-only, in every mode. Admins always see full votes.</div>
+      <label className="checkbox-row" style={{ marginBottom: 4 }}>
+        <input type="checkbox" checked={raceBadge} onChange={e => save({ showRaceBadge: e.target.checked }, { show_race_badge: e.target.checked }, e.target.checked ? '“Neck and neck” badges ON' : 'Badges OFF')} />
+        Show “🔥 Neck and neck” when the top two in a category are within about 10% (no numbers shown)
+      </label>
+      <label className="checkbox-row" style={{ marginBottom: 0 }}>
+        <input type="checkbox" checked={countdown} onChange={e => save({ showCountdown: e.target.checked }, { show_countdown: e.target.checked }, e.target.checked ? 'Countdown ON' : 'Countdown OFF')} />
+        Show “⏳ Voting closes in …” countdown on the vote page (uses the voting close date in Settings)
+      </label>
     </div>
   );
 }
@@ -437,7 +465,7 @@ export function VotingTab({ isMainAdmin }) {
   const [sub, setSub] = useState('ballot');
   return (
     <div>
-      {isMainAdmin && <ResultsSwitch />}
+      {isMainAdmin && <ResultsControl />}
       <div className="admin-tabs" style={{ marginBottom: 16 }}>
         <button className={sub === 'ballot' ? 'active' : ''} onClick={() => setSub('ballot')}>🗳️ Ballot</button>
         {isMainAdmin && <button className={sub === 'packages' ? 'active' : ''} onClick={() => setSub('packages')}>💎 Premium levels</button>}
@@ -661,15 +689,19 @@ function CandidatePoster({ candidate, onClose }) {
 function VotePackagesTab() {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ label: '', votes: '', priceGHS: '' });
+  const [form, setForm] = useState({ label: '', votes: '', priceGHS: '', promoLabel: '', availableFrom: '', availableUntil: '' });
 
   async function load() { setLoading(true); const d = await fetch('/api/vote-packages?all=1').then(r => r.json()); setPackages(d.packages || []); setLoading(false); }
   useEffect(() => { load(); }, []);
 
   async function create() {
     try {
-      await api('/api/vote-packages', 'POST', form);
-      setForm({ label: '', votes: '', priceGHS: '' }); toast('Package added'); load();
+      await api('/api/vote-packages', 'POST', {
+        ...form,
+        availableFrom: form.availableFrom ? `${form.availableFrom}:00Z` : null,
+        availableUntil: form.availableUntil ? `${form.availableUntil}:00Z` : null,
+      });
+      setForm({ label: '', votes: '', priceGHS: '', promoLabel: '', availableFrom: '', availableUntil: '' }); toast('Package added'); load();
     } catch (e) { toast(e.message); }
   }
   async function toggle(p) { try { await api(`/api/vote-packages/${p.id}`, 'PATCH', { active: !p.active }); load(); } catch (e) { toast(e.message); } }
@@ -699,20 +731,27 @@ function VotePackagesTab() {
         </div>
         <div className="two-col">
           <div className="field"><label>Price (GH₵)</label><input type="number" step="0.01" value={form.priceGHS} onChange={e => setForm(f => ({ ...f, priceGHS: e.target.value }))} /></div>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={create}>Add package</button></div>
+          <div className="field"><label>Tag (optional)</label><input type="text" placeholder="e.g. Last hours deal" value={form.promoLabel} onChange={e => setForm(f => ({ ...f, promoLabel: e.target.value }))} /></div>
         </div>
+        <div className="two-col">
+          <div className="field"><label>Available from (optional, Ghana time)</label><input type="datetime-local" value={form.availableFrom} onChange={e => setForm(f => ({ ...f, availableFrom: e.target.value }))} /></div>
+          <div className="field"><label>Available until (optional, Ghana time)</label><input type="datetime-local" value={form.availableUntil} onChange={e => setForm(f => ({ ...f, availableUntil: e.target.value }))} /></div>
+        </div>
+        <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={create}>Add package</button>
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Name</th><th>Votes</th><th>Price</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Votes</th><th>Price</th><th>Available</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {packages.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No packages yet — supporters can still vote with a custom count.</td></tr> :
+            {packages.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ink-soft)', padding: 24 }}>No packages yet — supporters can still vote with a custom count.</td></tr> :
               packages.map(p => (
                 <tr key={p.id} style={{ opacity: p.active ? 1 : 0.55 }}>
-                  <td>{p.label}</td><td>{p.votes}</td><td>GH₵{Number(p.price_ghs).toFixed(2)}</td>
+                  <td>{p.label}{p.promo_label && <div style={{ fontSize: 11, color: '#b45309' }}>🔥 {p.promo_label}</div>}</td><td>{p.votes}</td><td>GH₵{Number(p.price_ghs).toFixed(2)}</td>
+                  <td style={{ fontSize: 12 }}>{fmtWin(p)}</td>
                   <td>{p.active ? <span className="badge badge-used">Active</span> : <span className="badge badge-inactive">Hidden</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="small-btn" onClick={() => edit(p)}>Edit</button>{' '}
+                    <button className="small-btn" onClick={() => schedule(p)}>Schedule</button>{' '}
                     <button className="small-btn" onClick={() => toggle(p)}>{p.active ? 'Hide' : 'Show'}</button>{' '}
                     <button className="small-btn danger" onClick={() => del(p)}>Delete</button>
                   </td>
@@ -727,9 +766,10 @@ function VotePackagesTab() {
 
 function VoteTransactionsTab({ isMainAdmin }) {
   const [rows, setRows] = useState([]);
+  const [daily, setDaily] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  async function load() { setLoading(true); const d = await fetch('/api/vote-payments').then(r => r.json()); setRows(d.votePayments || []); setLoading(false); }
+  async function load() { setLoading(true); const d = await fetch('/api/vote-payments').then(r => r.json()); setRows(d.votePayments || []); setDaily(d.daily || []); setLoading(false); }
   useEffect(() => { load(); }, []);
 
   async function voidPurchase(ref) {
@@ -753,6 +793,23 @@ function VoteTransactionsTab({ isMainAdmin }) {
         <div className="kpi"><div className="n">GH₵{revenue.toFixed(2)}</div><div className="l">Raised</div></div>
         <div className="kpi"><div className="n">{rows.filter(r => r.status === 'voided').length}</div><div className="l">Voided</div></div>
       </div>
+      {daily.length > 0 && (() => {
+        const maxV = Math.max(...daily.map(d => d.votes), 1);
+        return (
+          <div className="panel panel-pad" style={{ marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Votes bought per day <span style={{ fontWeight: 400, color: 'var(--ink-soft)', fontSize: 12 }}>(admin only, last {daily.length} active days)</span></div>
+            {daily.map(d => (
+              <div key={d.day} style={{ display: 'grid', gridTemplateColumns: '84px 1fr 150px', gap: 10, alignItems: 'center', fontSize: 12.5, marginBottom: 5 }}>
+                <span style={{ color: 'var(--ink-soft)' }}>{d.day.slice(5)}</span>
+                <div style={{ height: 8, borderRadius: 6, background: 'var(--panel-2)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.max(3, Math.round((d.votes / maxV) * 100))}%`, background: 'var(--gold, #c9a227)' }} />
+                </div>
+                <span style={{ textAlign: 'right' }}><strong>{d.votes}</strong> votes · GH₵{Number(d.ghs).toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
       <div className="table-wrap">
         <table>
           <thead><tr><th>Reference</th><th>Voter</th><th>Candidate</th><th>Votes</th><th>Amount</th><th>Status</th><th>When</th>{isMainAdmin && <th></th>}</tr></thead>
@@ -870,7 +927,6 @@ export function ExtraSettings() {
         votingOpenDate: config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : null,
         votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
-        resultsPublic: config.results_public !== false,
         ussdShortcode: config.ussd_shortcode || null,
         posterBgUrl: config.poster_bg_url || null,
       }),
@@ -978,15 +1034,9 @@ export function ExtraSettings() {
         </div>
       </div>
 
-      <label className="checkbox-row" style={{ marginBottom: 4 }}>
-        <input type="checkbox" checked={config.results_public !== false} onChange={e => set('results_public', e.target.checked)} />
-        Show each nominee's vote count publicly (untick = ranking only, no scores)
-      </label>
-      <div className="hint" style={{ marginBottom: 12 }}>
-        Turn this off to CLOSE results: the public then sees only each nominee's position in their category, with no
-        scores (also on the USSD "check votes" option). Total votes and money raised are always admin-only,
-        whether this is on or off. People can still vote while it is off. Admin and Co-Admin views are unaffected.
-      </div>
+      <div className="divider-label">results display</div>
+      <ResultsControl />
+      <div className="hint" style={{ marginBottom: 12 }}>These switches save instantly — they don't need the Save button below.</div>
 
       <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={save}>Save these settings</button>
       {msg && <div className={`banner ${msg.ok ? 'banner-good' : 'banner-bad'}`} style={{ marginTop: 12 }}>{msg.text}</div>}

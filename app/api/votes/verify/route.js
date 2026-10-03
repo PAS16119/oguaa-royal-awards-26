@@ -2,6 +2,7 @@ import { sql } from '@/lib/db';
 import { verifyTransaction, paystackConfigured } from '@/lib/paystack';
 import { fulfilVotePayment } from '@/lib/votes';
 import { requireSection } from '@/lib/session';
+import { getVisibility } from '@/lib/results';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,8 +21,8 @@ export async function GET(req) {
     if (!c[0]) return null;
     // Same rule as the results pages: when results are closed, a voter's
     // thank-you screen must not reveal the nominee's running total either.
-    const cfg = await sql`SELECT results_public FROM config WHERE id = 'main'`;
-    const open = cfg[0]?.results_public !== false || !!(await requireSection('voting'));
+    const vis = await getVisibility();
+    const open = vis.mode === 'full' || !!(await requireSection('voting'));
     return open ? c[0] : { ...c[0], votes: null };
   }
 

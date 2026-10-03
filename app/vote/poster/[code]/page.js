@@ -75,6 +75,27 @@ export default function NomineePosterPage({ params }) {
           )}
           {candidate && (
             <>
+              <div className="panel panel-pad" style={{ marginBottom: 16, textAlign: 'center' }}>
+                {candidate.rank ? (
+                  <>
+                    <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Right now in {candidate.award_name}</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, margin: '4px 0' }}>
+                      {candidate.rank === 1 ? '🏆 ' : ''}You’re #{candidate.rank}
+                    </div>
+                    <div style={{ fontSize: 13.5 }}>
+                      {candidate.tight
+                        ? '🔥 It’s neck and neck at the top — every share could decide it. Send your poster out now!'
+                        : candidate.rank === 1
+                          ? 'You’re leading. Keep sharing so nobody catches up!'
+                          : 'Keep sharing — every vote moves you up.'}
+                      {candidate.votes !== null && candidate.votes !== undefined && <> · {candidate.votes} vote{candidate.votes === 1 ? '' : 's'}</>}
+                      {candidate.percent !== null && candidate.percent !== undefined && <> · {candidate.percent}% of the category</>}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 14 }}>No votes yet in {candidate.award_name} — share your poster and be the first on the board!</div>
+                )}
+              </div>
               <div style={{ marginBottom: 20 }}>
                 <PosterCard candidate={candidate} voteUrl={voteUrl} shortcode={shortcode} bgUrl={bgUrl} />
               </div>

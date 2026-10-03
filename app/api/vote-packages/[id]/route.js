@@ -22,6 +22,18 @@ export async function PATCH(req, { params }) {
       active    = ${typeof b.active === 'boolean' ? b.active : cur.active}
     WHERE id = ${id}
   `;
+  if (b.promoLabel !== undefined || b.availableFrom !== undefined || b.availableUntil !== undefined) {
+    try {
+      await sql`
+        UPDATE vote_packages SET
+          promo_label = ${b.promoLabel !== undefined ? ((b.promoLabel || '').trim() || null) : cur.promo_label ?? null},
+          available_from = ${b.availableFrom !== undefined ? (b.availableFrom || null) : cur.available_from ?? null},
+          available_until = ${b.availableUntil !== undefined ? (b.availableUntil || null) : cur.available_until ?? null}
+        WHERE id = ${id}`;
+    } catch {
+      return Response.json({ error: 'Run lib/schema-v9.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
+    }
+  }
   await logAudit({ type: 'main-admin' }, 'vote_package_updated', { id });
   return Response.json({ ok: true });
 }

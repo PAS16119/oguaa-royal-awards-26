@@ -1,4 +1,5 @@
 import { sql } from '@/lib/db';
+import { getVisibility, categoryStats } from '@/lib/results';
 import { requireSection } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 import { genId, genBallotCode } from '@/lib/codegen';
@@ -27,37 +28,33 @@ export async function GET(req) {
     ORDER BY section_label, award_name, nominee_name
   `;
 
-  // Rank within each category, computed here so the public can be shown a
-  // ranking without ever receiving the scores. Ties share a rank; a candidate
-  // with 0 votes has no rank yet.
-  const groups = {};
-  rows.forEach(c => { (groups[`${c.section_label || ''}|${c.award_name || ''}`] ||= []).push(c); });
-  const rankOf = new Map();
-  Object.values(groups).forEach(list => {
-    const sorted = [...list].sort((a, b) => Number(b.votes) - Number(a.votes));
-    let r = 0, prev = null;
-    sorted.forEach((c, i) => {
-      const v = Number(c.votes);
-      if (v !== prev) { r = i + 1; prev = v; }
-      rankOf.set(c.id, v > 0 ? r : null);
-    });
+  // What this viewer may see. Admins always see full votes. Everyone else gets
+  // whatever the Main Admin chose: closed (ranking only), percent (ranking +
+  // % share of the category) or full (ranking + each nominee's votes). Total
+  // votes and money raised are never part of this response in any mode.
+  const vis = await getVisibility();
+  const isAdmin = !!(await requireSection('voting'));
+  const viewMode = isAdmin ? 'full' : vis.mode;
+  const stats = categoryStats(rows);
+
+  const out = rows.map(c => {
+    const st = stats.get(c.id) || {};
+    return {
+      ...c,
+      votes: viewMode === 'full' ? Number(c.votes) : null,
+      percent: viewMode === 'percent' ? st.percent : null,
+      rank: st.rank ?? null,
+      tight: vis.raceBadge ? !!st.tight : false,
+    };
   });
 
-  // Results switch. ON  = everyone sees each nominee's vote count.
-  //                OFF = everyone except admins sees ranking only, no scores.
-  // Total votes / money raised are never in this response at all.
-  const cfgRows = await sql`SELECT results_public FROM config WHERE id = 'main'`;
-  const resultsPublic = cfgRows[0]?.results_public !== false;
-  const isAdmin = !!(await requireSection('voting'));
-  const showScores = resultsPublic || isAdmin;
-
-  const out = rows.map(c => ({
-    ...c,
-    votes: showScores ? Number(c.votes) : null,
-    rank: rankOf.get(c.id),
-  }));
-
-  return Response.json({ candidates: out, resultsPublic, showScores });
+  return Response.json({
+    candidates: out,
+    mode: viewMode,
+    publicMode: vis.mode,
+    viewerIsAdmin: isAdmin,
+    showScores: viewMode === 'full',
+  });
 }
 
 // POST — promote a paid-track nomination onto the ballot. Admin or Co-Admin.

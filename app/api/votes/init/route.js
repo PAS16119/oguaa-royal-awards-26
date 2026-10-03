@@ -43,7 +43,16 @@ export async function POST(req) {
   let votes, amountPesewas, packageId = null;
 
   if (body.packageId) {
-    const pkgRows = await sql`SELECT * FROM vote_packages WHERE id = ${body.packageId} AND active = true`;
+    let pkgRows;
+    try {
+      pkgRows = await sql`
+        SELECT * FROM vote_packages WHERE id = ${body.packageId} AND active = true
+          AND (available_from IS NULL OR available_from <= now())
+          AND (available_until IS NULL OR available_until > now())`;
+    } catch {
+      // schema-v9 not applied yet
+      pkgRows = await sql`SELECT * FROM vote_packages WHERE id = ${body.packageId} AND active = true`;
+    }
     if (pkgRows.length === 0) return Response.json({ error: 'That vote package is no longer available.' }, { status: 400 });
     votes = pkgRows[0].votes;
     amountPesewas = Math.round(Number(pkgRows[0].price_ghs) * 100);

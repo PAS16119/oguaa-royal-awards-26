@@ -2,6 +2,7 @@ import { sql } from '@/lib/db';
 import { requireMainAdmin } from '@/lib/session';
 import { logAudit } from '@/lib/audit';
 import { paystackConfigured } from '@/lib/paystack';
+import { RESULT_MODES } from '@/lib/results';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,29 @@ export async function POST(req) {
       ussd_shortcode = EXCLUDED.ussd_shortcode,
       poster_bg_url = EXCLUDED.poster_bg_url
   `;
+  // Results control and public motivators live in schema-v9 columns. They are
+  // saved separately, and only when sent, so the rest of Settings keeps working
+  // even before that migration has been run.
+  const touchesV9 = b.resultsMode !== undefined || b.showRaceBadge !== undefined || b.showCountdown !== undefined;
+  if (touchesV9) {
+    if (b.resultsMode !== undefined && !RESULT_MODES.includes(b.resultsMode)) {
+      return Response.json({ error: 'Unknown results mode.' }, { status: 400 });
+    }
+    try {
+      const mode = b.resultsMode ?? cur.results_mode ?? (cur.results_public === false ? 'closed' : 'full');
+      await sql`
+        UPDATE config SET
+          results_mode    = ${mode},
+          results_public  = ${mode !== 'closed'},
+          show_race_badge = ${b.showRaceBadge ?? cur.show_race_badge ?? true},
+          show_countdown  = ${b.showCountdown ?? cur.show_countdown ?? true}
+        WHERE id = 'main'
+      `;
+    } catch (e) {
+      return Response.json({ error: 'Run lib/schema-v9.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
+    }
+    await logAudit({ type: 'main-admin' }, 'results_visibility_updated', { mode: b.resultsMode, raceBadge: b.showRaceBadge, countdown: b.showCountdown });
+  }
   await logAudit({ type: 'main-admin' }, 'settings_updated', {});
   return Response.json({ ok: true });
 }

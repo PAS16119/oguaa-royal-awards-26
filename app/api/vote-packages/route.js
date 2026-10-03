@@ -14,7 +14,19 @@ export async function GET(req) {
     const rows = await sql`SELECT * FROM vote_packages ORDER BY sort_order, price_ghs`;
     return Response.json({ packages: rows });
   }
-  const rows = await sql`SELECT * FROM vote_packages WHERE active = true ORDER BY sort_order, price_ghs`;
+  // Scheduled ("last hours") packages only appear inside their window.
+  let rows;
+  try {
+    rows = await sql`
+      SELECT * FROM vote_packages
+      WHERE active = true
+        AND (available_from IS NULL OR available_from <= now())
+        AND (available_until IS NULL OR available_until > now())
+      ORDER BY sort_order, price_ghs`;
+  } catch {
+    // schema-v9 not applied yet
+    rows = await sql`SELECT * FROM vote_packages WHERE active = true ORDER BY sort_order, price_ghs`;
+  }
   return Response.json({ packages: rows });
 }
 
@@ -38,6 +50,18 @@ export async function POST(req) {
     INSERT INTO vote_packages (id, label, votes, price_ghs, sort_order, active)
     VALUES (${id}, ${label}, ${votes}, ${price}, ${maxRows[0].n}, true)
   `;
+  if (b.promoLabel || b.availableFrom || b.availableUntil) {
+    try {
+      await sql`
+        UPDATE vote_packages SET
+          promo_label = ${(b.promoLabel || '').trim() || null},
+          available_from = ${b.availableFrom || null},
+          available_until = ${b.availableUntil || null}
+        WHERE id = ${id}`;
+    } catch {
+      return Response.json({ error: 'Package added, but the schedule was not saved. Run lib/schema-v9.sql in Neon, then use Schedule on the package.' }, { status: 500 });
+    }
+  }
   await logAudit({ type: 'main-admin' }, 'vote_package_created', { id, label, votes, price });
   return Response.json({ ok: true, id });
 }
