@@ -1,6 +1,7 @@
 import { sql } from '@/lib/db';
 import { verifyTransaction, paystackConfigured } from '@/lib/paystack';
 import { fulfilVotePayment } from '@/lib/votes';
+import { requireSection } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,12 @@ export async function GET(req) {
 
   async function candidateSnapshot() {
     const c = await sql`SELECT id, nominee_name, award_name, votes FROM candidates WHERE id = ${p.candidate_id}`;
-    return c[0] || null;
+    if (!c[0]) return null;
+    // Same rule as the results pages: when results are closed, a voter's
+    // thank-you screen must not reveal the nominee's running total either.
+    const cfg = await sql`SELECT results_public FROM config WHERE id = 'main'`;
+    const open = cfg[0]?.results_public !== false || !!(await requireSection('voting'));
+    return open ? c[0] : { ...c[0], votes: null };
   }
 
   if (p.status === 'paid') {

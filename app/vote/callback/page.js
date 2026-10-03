@@ -53,7 +53,7 @@ export default function VoteCallbackPage() {
                   {' '}<strong>{state.candidate?.nominee_name}</strong>
                   {state.candidate?.award_name && <> ({state.candidate.award_name})</>}.
                 </p>
-                {state.candidate && (
+                {state.candidate && state.candidate.votes !== null && state.candidate.votes !== undefined && (
                   <div className="banner banner-good" style={{ margin: '18px 0', justifyContent: 'center' }}>
                     They now have <strong style={{ marginLeft: 6 }}>{state.candidate.votes}</strong> votes total.
                   </div>

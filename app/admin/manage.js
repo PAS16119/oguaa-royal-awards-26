@@ -411,10 +411,33 @@ export function CoAdminsTab() {
 }
 
 /* =========================================================== VOTING ===== */
+function ResultsSwitch() {
+  const [open, setOpen] = useState(null);
+  useEffect(() => {
+    fetch('/api/config').then(r => r.json()).then(d => setOpen(d.config?.results_public !== false)).catch(() => {});
+  }, []);
+  async function flip() {
+    const next = !open;
+    try {
+      await api('/api/config', 'POST', { resultsPublic: next });
+      setOpen(next);
+      toast(next ? 'Results are now OPEN — public sees vote counts' : 'Results are now CLOSED — public sees ranking only');
+    } catch (e) { toast(e.message); }
+  }
+  if (open === null) return null;
+  return (
+    <div className={`banner ${open ? 'banner-good' : 'banner-bad'}`} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <span>{open ? '🔓 Results OPEN — public sees each nominee\'s votes' : '🔒 Results CLOSED — public sees ranking only, no scores'}</span>
+      <button className="btn btn-gold" style={{ fontSize: 13 }} onClick={flip}>{open ? 'Close results' : 'Open results'}</button>
+    </div>
+  );
+}
+
 export function VotingTab({ isMainAdmin }) {
   const [sub, setSub] = useState('ballot');
   return (
     <div>
+      {isMainAdmin && <ResultsSwitch />}
       <div className="admin-tabs" style={{ marginBottom: 16 }}>
         <button className={sub === 'ballot' ? 'active' : ''} onClick={() => setSub('ballot')}>🗳️ Ballot</button>
         {isMainAdmin && <button className={sub === 'packages' ? 'active' : ''} onClick={() => setSub('packages')}>💎 Premium levels</button>}
@@ -957,12 +980,12 @@ export function ExtraSettings() {
 
       <label className="checkbox-row" style={{ marginBottom: 4 }}>
         <input type="checkbox" checked={config.results_public !== false} onChange={e => set('results_public', e.target.checked)} />
-        Show live vote totals publicly
+        Show each nominee's vote count publicly (untick = ranking only, no scores)
       </label>
       <div className="hint" style={{ marginBottom: 12 }}>
-        Turn this off to hide vote counts on /vote and /vote/results (and the USSD "check votes" option) —
-        useful for building suspense, or if you'd rather a trailing candidate not see exactly how far behind they are.
-        People can still vote while this is off; they just can't see the running tally. Admin and Co-Admin views are unaffected.
+        Turn this off to CLOSE results: the public then sees only each nominee's position in their category, with no
+        scores (also on the USSD "check votes" option). Total votes and money raised are always admin-only,
+        whether this is on or off. People can still vote while it is off. Admin and Co-Admin views are unaffected.
       </div>
 
       <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={save}>Save these settings</button>

@@ -18,20 +18,46 @@ export async function GET(req) {
     return Response.json({ candidates: rows });
   }
 
+  // Public ballot. Ordered by name (not by votes) so the order itself never
+  // leaks who is ahead on /vote while results are closed.
   const rows = await sql`
     SELECT id, award_id, section_key, section_label, award_name, nominee_name,
            nominee_class, nominee_house, photo_url, votes, ballot_code
     FROM candidates WHERE active = true
-    ORDER BY section_label, award_name, votes DESC
+    ORDER BY section_label, award_name, nominee_name
   `;
 
-  // The "suspense switch" — when the admin has turned public results off,
-  // strip the actual tallies before this reaches anyone outside admin/co-admin.
+  // Rank within each category, computed here so the public can be shown a
+  // ranking without ever receiving the scores. Ties share a rank; a candidate
+  // with 0 votes has no rank yet.
+  const groups = {};
+  rows.forEach(c => { (groups[`${c.section_label || ''}|${c.award_name || ''}`] ||= []).push(c); });
+  const rankOf = new Map();
+  Object.values(groups).forEach(list => {
+    const sorted = [...list].sort((a, b) => Number(b.votes) - Number(a.votes));
+    let r = 0, prev = null;
+    sorted.forEach((c, i) => {
+      const v = Number(c.votes);
+      if (v !== prev) { r = i + 1; prev = v; }
+      rankOf.set(c.id, v > 0 ? r : null);
+    });
+  });
+
+  // Results switch. ON  = everyone sees each nominee's vote count.
+  //                OFF = everyone except admins sees ranking only, no scores.
+  // Total votes / money raised are never in this response at all.
   const cfgRows = await sql`SELECT results_public FROM config WHERE id = 'main'`;
   const resultsPublic = cfgRows[0]?.results_public !== false;
-  const out = resultsPublic ? rows : rows.map(c => ({ ...c, votes: null }));
+  const isAdmin = !!(await requireSection('voting'));
+  const showScores = resultsPublic || isAdmin;
 
-  return Response.json({ candidates: out, resultsPublic });
+  const out = rows.map(c => ({
+    ...c,
+    votes: showScores ? Number(c.votes) : null,
+    rank: rankOf.get(c.id),
+  }));
+
+  return Response.json({ candidates: out, resultsPublic, showScores });
 }
 
 // POST — promote a paid-track nomination onto the ballot. Admin or Co-Admin.

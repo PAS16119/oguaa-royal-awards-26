@@ -1,5 +1,6 @@
 import { sql } from '@/lib/db';
 import { paystackConfigured } from '@/lib/paystack';
+import { requireSection } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,13 +30,23 @@ export async function GET() {
     candidatesCount = candRows[0].n;
   } catch { /* schema-v4 not applied yet */ }
 
-  return Response.json({
+  const body = {
     config: configRows[0] || null,
     paystackConfigured: paystackConfigured(),
     nominationCount: (byTrack.paid || 0) + (byTrack.free || 0),
-    paidCount: byTrack.paid || 0,
     freeCount: byTrack.free || 0,
     awards: awardsByTrack,
-    votesTotal, voteRevenueGHS, candidatesCount,
-  });
+    candidatesCount,
+  };
+
+  // Total votes and money raised are admin-only, whether results are open or
+  // closed. The check is here in the API (not just hidden in the page), so
+  // nobody can read the numbers by opening /api/public/summary directly.
+  const adminSession = await requireSection('voting');
+  if (adminSession) {
+    body.paidCount = byTrack.paid || 0;
+    body.votesTotal = votesTotal;
+    body.voteRevenueGHS = voteRevenueGHS;
+  }
+  return Response.json(body);
 }

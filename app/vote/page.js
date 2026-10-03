@@ -16,7 +16,7 @@ export default function VotePage() {
   const [candidates, setCandidates] = useState(null);
   const [packages, setPackages] = useState([]);
   const [config, setConfig] = useState(null);
-  const [totals, setTotals] = useState(null);
+  const [showScores, setShowScores] = useState(true);
 
   const [pickedId, setPickedId] = useState(null);
   const [activeSection, setActiveSection] = useState(null);
@@ -30,9 +30,9 @@ export default function VotePage() {
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    fetch('/api/candidates').then(r => r.json()).then(d => setCandidates(d.candidates || [])).catch(() => setCandidates([]));
+    fetch('/api/candidates').then(r => r.json()).then(d => { setCandidates(d.candidates || []); setShowScores(d.showScores !== false); }).catch(() => setCandidates([]));
     fetch('/api/vote-packages').then(r => r.json()).then(d => setPackages(d.packages || [])).catch(() => {});
-    fetch('/api/public/summary').then(r => r.json()).then(d => { setConfig(d.config); setTotals(d); }).catch(() => {});
+    fetch('/api/public/summary').then(r => r.json()).then(d => setConfig(d.config)).catch(() => {});
     try {
       const saved = JSON.parse(localStorage.getItem(VOTER_KEY) || 'null');
       if (saved) { setName(saved.name || ''); setEmail(saved.email || ''); setPhone(saved.phone || ''); }
@@ -61,7 +61,7 @@ export default function VotePage() {
     groups[g] = groups[g] || {};
     (groups[g][a] = groups[g][a] || []).push(c);
   });
-  Object.values(groups).forEach(cats => Object.values(cats).forEach(list => list.sort((a, b) => b.votes - a.votes)));
+  Object.values(groups).forEach(cats => Object.values(cats).forEach(list => list.sort((a, b) => ((b.votes ?? 0) - (a.votes ?? 0)) || a.nominee_name.localeCompare(b.nominee_name))));
 
   const groupNomineeCount = g => Object.values(groups[g] || {}).reduce((n, list) => n + list.length, 0);
   const activeCats = activeSection ? groups[activeSection] : null;
@@ -128,13 +128,9 @@ export default function VotePage() {
             </div>
           </div>
 
-          {totals && (totals.votesTotal > 0 || totals.candidatesCount > 0) && (
-            <div className="banner banner-gold" style={{ marginBottom: 20 }}>
-              🗳️ {totals.votesTotal} vote{totals.votesTotal === 1 ? '' : 's'} cast so far
-              {totals.voteRevenueGHS > 0 && <> · GH₵{totals.voteRevenueGHS.toFixed(2)} raised for the free awards</>}
-              {' · '}<a href="/vote/results" style={{ color: 'inherit', textDecoration: 'underline' }}>see the leaderboard →</a>
-            </div>
-          )}
+          <div className="banner banner-gold" style={{ marginBottom: 20 }}>
+            🗳️ <a href="/vote/results" style={{ color: 'inherit', textDecoration: 'underline' }}>See results by category →</a>
+          </div>
 
           {closedMsg && <div className="banner banner-bad" style={{ marginBottom: 20 }}>{closedMsg}</div>}
 

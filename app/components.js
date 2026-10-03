@@ -70,6 +70,7 @@ const NAV_TABS = [
   ['/nominate', 'Nominate'],
   ['/nominate-free', 'Free Awards'],
   ['/vote', 'Vote'],
+  ['/vote/results', 'Results'],
 ];
 
 export function Shell({ children }) {
