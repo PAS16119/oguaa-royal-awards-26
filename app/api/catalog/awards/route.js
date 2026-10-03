@@ -74,20 +74,24 @@ export async function PATCH(req) {
     WHERE id = ${b.id}
   `;
 
-  // Group and award name are copied onto each nomination/candidate at the
-  // moment it's created (so a poster or ballot entry never silently changes
-  // under someone), so moving the award here has to be pushed out to every
-  // row that already copied the old group — otherwise candidates nominated
-  // before the move stay filed under a group that no longer lists this
-  // award, splitting one category across two groups on the vote page.
-  if (newSectionKey !== cur.section_key) {
+  // Group and award name are copied onto each nomination/candidate when it is
+  // created, so a move OR a rename here has to be pushed to every copy —
+  // otherwise old entries stay under the old group/name and one award shows up
+  // as two slots. Only labels are rewritten; vote counts are never touched.
+  const newName = b.name ?? cur.name;
+  if (newSectionKey !== cur.section_key || newName !== cur.name) {
     const secRows = await sql`SELECT label FROM award_sections WHERE key = ${newSectionKey}`;
     const newLabel = secRows[0]?.label || newSectionKey;
 
-    await sql`UPDATE candidates SET section_key = ${newSectionKey}, section_label = ${newLabel} WHERE award_id = ${b.id}`;
     await sql`
-      UPDATE nominations SET section_key = ${newSectionKey}, section_label = ${newLabel}
-      WHERE category = ${cur.name} AND section_key = ${cur.section_key}
+      UPDATE candidates SET section_key = ${newSectionKey}, section_label = ${newLabel}, award_name = ${newName}
+      WHERE award_id = ${b.id}
+         OR (award_id IS NULL AND award_name = ${cur.name} AND section_key = ${cur.section_key})
+    `;
+    await sql`
+      UPDATE nominations SET section_key = ${newSectionKey}, section_label = ${newLabel}, category = ${newName}
+      WHERE award_id = ${b.id}
+         OR (award_id IS NULL AND category = ${cur.name} AND section_key = ${cur.section_key})
     `;
   }
 

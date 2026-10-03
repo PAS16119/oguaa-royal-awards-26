@@ -17,13 +17,19 @@ export default function VoteResultsPage() {
   const [data, setData] = useState(null);
   const [adminTotals, setAdminTotals] = useState(null);
   const [focusId, setFocusId] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);   // true once we know this browser is logged in as admin
+  const [preview, setPreview] = useState(false);   // admin previewing exactly what voters see
 
   useEffect(() => {
-    fetch('/api/candidates').then(r => r.json()).then(setData).catch(() => setData({ candidates: [], mode: 'closed' }));
-    fetch('/api/public/summary').then(r => r.json()).then(d => {
-      if (typeof d.votesTotal === 'number') setAdminTotals(d);
+    const q = preview ? '?as=public' : '';
+    fetch('/api/candidates' + q).then(r => r.json()).then(d => {
+      setData(d);
+      if (d.viewerIsAdmin) setIsAdmin(true);
+    }).catch(() => setData({ candidates: [], mode: 'closed' }));
+    fetch('/api/public/summary' + q).then(r => r.json()).then(d => {
+      setAdminTotals(typeof d.votesTotal === 'number' ? d : null);
     }).catch(() => {});
-  }, []);
+  }, [preview]);
 
   const candidates = data ? data.candidates || [] : null;
   const mode = data?.mode || 'closed';
@@ -63,10 +69,22 @@ export default function VoteResultsPage() {
             </div>
           </div>
 
-          {data?.viewerIsAdmin && (
-            <div className="banner banner-gold" style={{ marginBottom: 20 }}>
-              🔒 Admin only: {adminTotals ? <>{adminTotals.votesTotal} votes cast · GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)} raised. </> : null}
-              You see full votes here; the public currently sees: <strong style={{ marginLeft: 4 }}>{MODE_LABEL[data.publicMode] || data.publicMode}</strong>.
+          {isAdmin && !preview && (
+            <div className="banner banner-gold" style={{ marginBottom: 20, display: 'block', border: '2px dashed #b45309' }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>👁 ADMIN VIEW — only you can see this box</div>
+              <div style={{ fontSize: 13 }}>
+                You're logged in as admin in this browser. Voters never see this box or the numbers in it.
+                {adminTotals && <> Total: <strong>{adminTotals.votesTotal}</strong> votes · <strong>GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)}</strong> raised.</>}
+                {' '}Voters currently see: <strong>{MODE_LABEL[data?.publicMode] || data?.publicMode}</strong>.
+              </div>
+              <button className="btn btn-gold" style={{ marginTop: 10, fontSize: 13 }} onClick={() => setPreview(true)}>See it exactly as a voter does</button>
+            </div>
+          )}
+          {isAdmin && preview && (
+            <div className="banner banner-good" style={{ marginBottom: 20, display: 'block' }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>👥 Previewing what voters see</div>
+              <div style={{ fontSize: 13 }}>No totals, no money, and only what the current mode allows.</div>
+              <button className="btn btn-gold" style={{ marginTop: 10, fontSize: 13 }} onClick={() => setPreview(false)}>Back to admin view</button>
             </div>
           )}
 

@@ -4,7 +4,7 @@ import { requireSection } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req) {
   const configRows = await sql`SELECT * FROM config WHERE id = 'main'`;
   const counts = await sql`
     SELECT COALESCE(track, 'paid') AS track, COUNT(*)::int AS count FROM nominations GROUP BY 1
@@ -43,7 +43,7 @@ export async function GET() {
   // closed. The check is here in the API (not just hidden in the page), so
   // nobody can read the numbers by opening /api/public/summary directly.
   const adminSession = await requireSection('voting');
-  if (adminSession) {
+  if (adminSession && new URL(req.url).searchParams.get('as') !== 'public') {
     body.paidCount = byTrack.paid || 0;
     body.votesTotal = votesTotal;
     body.voteRevenueGHS = voteRevenueGHS;

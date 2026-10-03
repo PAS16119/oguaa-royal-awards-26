@@ -60,6 +60,11 @@ export async function PATCH(req) {
       active = ${typeof b.active === 'boolean' ? b.active : cur.active}
     WHERE key = ${b.key}
   `;
+  // The group's label is copied onto nominations/candidates too; keep them in step.
+  if (b.label !== undefined && b.label !== cur.label) {
+    await sql`UPDATE candidates  SET section_label = ${b.label} WHERE section_key = ${b.key}`;
+    await sql`UPDATE nominations SET section_label = ${b.label} WHERE section_key = ${b.key}`;
+  }
   await logAudit(actorFromSession(session), 'award_group_updated', { key: b.key });
   return Response.json({ ok: true });
 }
