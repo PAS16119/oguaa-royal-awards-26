@@ -1,5 +1,5 @@
 import { sql } from '@/lib/db';
-import { getVisibility, categoryStats } from '@/lib/results';
+import { getVisibility, categoryStats, shuffleWithinCategories } from '@/lib/results';
 import { requireSection } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 import { genId, genBallotCode } from '@/lib/codegen';
@@ -19,25 +19,13 @@ export async function GET(req) {
     return Response.json({ candidates: rows });
   }
 
-  // Public ballot. Group and award name come from the LIVE award list (via
-  // award_id), not from the copy stored on each candidate when it was created.
-  // That way moving or renaming an award can never leave some nominees filed
-  // under the old group — one award is always exactly one slot. The stored
-  // copy is only a fallback for any entry that has no award_id.
-  // Ordered by the admin's own group/award order, then by name (never by votes,
-  // so the order itself can't leak who is ahead).
+  // Public ballot. Ordered by name (not by votes) so the order itself never
+  // leaks who is ahead on /vote while results are closed.
   const rows = await sql`
-    SELECT c.id, c.award_id,
-           COALESCE(s.key,   c.section_key)   AS section_key,
-           COALESCE(s.label, c.section_label) AS section_label,
-           COALESCE(a.name,  c.award_name)    AS award_name,
-           c.nominee_name, c.nominee_class, c.nominee_house, c.photo_url, c.votes, c.ballot_code
-    FROM candidates c
-    LEFT JOIN awards a ON a.id = c.award_id
-    LEFT JOIN award_sections s ON s.key = a.section_key
-    WHERE c.active = true
-    ORDER BY COALESCE(s.sort_order, 9999), COALESCE(s.label, c.section_label),
-             COALESCE(a.sort_order, 9999), COALESCE(a.name, c.award_name), c.nominee_name
+    SELECT id, award_id, section_key, section_label, award_name, nominee_name,
+           nominee_class, nominee_house, photo_url, votes, ballot_code
+    FROM candidates WHERE active = true
+    ORDER BY section_label, award_name, nominee_name
   `;
 
   // What this viewer may see. Admins always see full votes. Everyone else gets
@@ -45,20 +33,22 @@ export async function GET(req) {
   // % share of the category) or full (ranking + each nominee's votes). Total
   // votes and money raised are never part of this response in any mode.
   const vis = await getVisibility();
-  // ?as=public lets a logged-in admin preview exactly what a voter gets.
-  const asPublic = searchParams.get('as') === 'public';
-  const isAdmin = !asPublic && !!(await requireSection('voting'));
+  const isAdmin = !!(await requireSection('voting'));
   const viewMode = isAdmin ? 'full' : vis.mode;
   const stats = categoryStats(rows);
+  // Shuffle: public sees random order and no rank/badges. Admins always see the truth.
+  const shuffled = !isAdmin && vis.shuffle;
+  const hideRank = viewMode === 'hidden' || shuffled;
+  const ordered = shuffled ? shuffleWithinCategories(rows) : rows;
 
-  const out = rows.map(c => {
+  const out = ordered.map(c => {
     const st = stats.get(c.id) || {};
     return {
       ...c,
       votes: viewMode === 'full' ? Number(c.votes) : null,
       percent: viewMode === 'percent' ? st.percent : null,
-      rank: st.rank ?? null,
-      tight: vis.raceBadge ? !!st.tight : false,
+      rank: hideRank ? null : (st.rank ?? null),
+      tight: hideRank ? false : (vis.raceBadge ? !!st.tight : false),
     };
   });
 
@@ -66,6 +56,9 @@ export async function GET(req) {
     candidates: out,
     mode: viewMode,
     publicMode: vis.mode,
+    shuffled,
+    rankHidden: hideRank,
+    publicShuffle: vis.shuffle,
     viewerIsAdmin: isAdmin,
     showScores: viewMode === 'full',
   });

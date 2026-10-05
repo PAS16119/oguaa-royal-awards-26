@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react';
 import { Shell, Toast, CandidateSearch } from '../../components';
 
 const MODE_NOTE = {
+  hidden: 'Results are being kept private until the winners are announced.',
   closed: 'Showing the current ranking in each category.',
+  shuffled: 'Nominees are shown in random order while voting is on. This is not a ranking, so keep voting for your favourite!',
   percent: 'Each nominee’s share of the votes in their category. Updated live.',
   full: 'Votes per nominee in each category. Updated the moment a vote is confirmed.',
 };
-const MODE_LABEL = { closed: 'Closed — ranking only', percent: 'Percentages', full: 'Full votes' };
+const MODE_LABEL = { hidden: 'Hidden — nothing shown', closed: 'Closed — ranking only', percent: 'Percentages', full: 'Full votes' };
 
 // Per-category results. Total votes and money raised are NOT shown here to the
 // public — only a logged-in admin gets that banner (the API only sends the
@@ -17,22 +19,17 @@ export default function VoteResultsPage() {
   const [data, setData] = useState(null);
   const [adminTotals, setAdminTotals] = useState(null);
   const [focusId, setFocusId] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);   // true once we know this browser is logged in as admin
-  const [preview, setPreview] = useState(false);   // admin previewing exactly what voters see
 
   useEffect(() => {
-    const q = preview ? '?as=public' : '';
-    fetch('/api/candidates' + q).then(r => r.json()).then(d => {
-      setData(d);
-      if (d.viewerIsAdmin) setIsAdmin(true);
-    }).catch(() => setData({ candidates: [], mode: 'closed' }));
-    fetch('/api/public/summary' + q).then(r => r.json()).then(d => {
-      setAdminTotals(typeof d.votesTotal === 'number' ? d : null);
+    fetch('/api/candidates').then(r => r.json()).then(setData).catch(() => setData({ candidates: [], mode: 'closed' }));
+    fetch('/api/public/summary').then(r => r.json()).then(d => {
+      if (typeof d.votesTotal === 'number') setAdminTotals(d);
     }).catch(() => {});
-  }, [preview]);
+  }, []);
 
   const candidates = data ? data.candidates || [] : null;
   const mode = data?.mode || 'closed';
+  const shuffled = !!data?.shuffled;
 
   const sections = {};
   (candidates || []).forEach(c => {
@@ -44,7 +41,8 @@ export default function VoteResultsPage() {
   });
   // Order by the server-computed rank (works in every mode); anyone without a
   // rank yet (no votes) goes last, alphabetically.
-  Object.values(sections).forEach(awards => {
+  // When shuffled, keep the server's random order: no sorting by anything.
+  if (!shuffled) Object.values(sections).forEach(awards => {
     Object.values(awards).forEach(list => list.sort((a, b) =>
       (a.rank ?? 9999) - (b.rank ?? 9999) || a.nominee_name.localeCompare(b.nominee_name)));
   });
@@ -63,32 +61,20 @@ export default function VoteResultsPage() {
               <span className="section-tag">Results</span>
               <h2>Voting results by category</h2>
               <div className="sub">
-                {MODE_NOTE[mode]}
-                {' · '}<a href="/vote/winners" style={{ color: 'inherit', textDecoration: 'underline' }}>Winners only →</a>
+                {shuffled ? MODE_NOTE.shuffled : MODE_NOTE[mode]}
+                {!shuffled && <>{' · '}<a href="/vote/winners" style={{ color: 'inherit', textDecoration: 'underline' }}>Winners only →</a></>}
               </div>
             </div>
           </div>
 
-          {isAdmin && !preview && (
-            <div className="banner banner-gold" style={{ marginBottom: 20, display: 'block', border: '2px dashed #b45309' }}>
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>👁 ADMIN VIEW — only you can see this box</div>
-              <div style={{ fontSize: 13 }}>
-                You're logged in as admin in this browser. Voters never see this box or the numbers in it.
-                {adminTotals && <> Total: <strong>{adminTotals.votesTotal}</strong> votes · <strong>GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)}</strong> raised.</>}
-                {' '}Voters currently see: <strong>{MODE_LABEL[data?.publicMode] || data?.publicMode}</strong>.
-              </div>
-              <button className="btn btn-gold" style={{ marginTop: 10, fontSize: 13 }} onClick={() => setPreview(true)}>See it exactly as a voter does</button>
-            </div>
-          )}
-          {isAdmin && preview && (
-            <div className="banner banner-good" style={{ marginBottom: 20, display: 'block' }}>
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>👥 Previewing what voters see</div>
-              <div style={{ fontSize: 13 }}>No totals, no money, and only what the current mode allows.</div>
-              <button className="btn btn-gold" style={{ marginTop: 10, fontSize: 13 }} onClick={() => setPreview(false)}>Back to admin view</button>
+          {data?.viewerIsAdmin && (
+            <div className="banner banner-gold" style={{ marginBottom: 20 }}>
+              🔒 Admin only: {adminTotals ? <>{adminTotals.votesTotal} votes cast · GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)} raised. </> : null}
+              You see full votes here; the public currently sees: <strong style={{ marginLeft: 4 }}>{MODE_LABEL[data.publicMode] || data.publicMode}{data.publicShuffle ? ' (shuffled order)' : ''}</strong>.
             </div>
           )}
 
-          {candidates && candidates.length > 0 && (
+          {mode !== 'hidden' && !shuffled && candidates && candidates.length > 0 && (
             <CandidateSearch
               candidates={candidates}
               placeholder="Find a nominee to see where they stand…"
@@ -104,6 +90,10 @@ export default function VoteResultsPage() {
 
           {candidates === null ? (
             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
+          ) : mode === 'hidden' ? (
+            <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
+              🔒 Results are hidden while voting is on. Winners will be announced at the Oguaa Royal Awards Night.
+            </div>
           ) : candidates.length === 0 ? (
             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
           ) : Object.keys(visibleSections).map(section => (
@@ -126,7 +116,7 @@ export default function VoteResultsPage() {
                         <div key={c.id} style={{ marginBottom: 12, padding: c.id === focusId ? '6px 8px' : 0, borderRadius: 8, background: c.id === focusId ? 'rgba(201,162,39,.16)' : 'transparent' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: showBar ? 4 : 0 }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ color: 'var(--ink-soft)', fontSize: 11.5, minWidth: 18 }}>{c.rank ? `#${c.rank}` : '–'}</span>
+                              {!shuffled && <span style={{ color: 'var(--ink-soft)', fontSize: 11.5, minWidth: 18 }}>{c.rank ? `#${c.rank}` : '–'}</span>}
                               {c.photo_url && (
                                 <img src={c.photo_url} alt="" width={22} height={22}
                                      style={{ borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', flex: 'none' }} />

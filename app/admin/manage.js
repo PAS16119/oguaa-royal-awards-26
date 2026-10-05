@@ -412,6 +412,7 @@ export function CoAdminsTab() {
 
 /* =========================================================== VOTING ===== */
 const RESULT_CHOICES = [
+  ['hidden', '🙈 Hidden', 'Public sees nothing: no ranking, no winners, no “neck and neck” badges'],
   ['closed', '🔒 Closed', 'Public sees each category’s ranking only — no votes, no percentages'],
   ['percent', '📊 Percentages', 'Ranking plus each nominee’s % share of their category'],
   ['full', '🔓 Full votes', 'Ranking plus each nominee’s vote count'],
@@ -426,16 +427,17 @@ function ResultsControl() {
     fetch('/api/config').then(r => r.json()).then(d => setCfg(d.config || {})).catch(() => {});
   }, []);
   if (!cfg) return null;
-  const mode = ['closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
+  const mode = ['hidden', 'closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
   const raceBadge = cfg.show_race_badge !== false;
   const countdown = cfg.show_countdown !== false;
+  const shuffle = cfg.results_shuffle === true;
 
   async function save(patch, local, msg) {
     try { await api('/api/config', 'POST', patch); setCfg(c => ({ ...c, ...local })); toast(msg); }
     catch (e) { toast(e.message); }
   }
-  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' },
-    m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
+  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' && m !== 'hidden' },
+    m === 'hidden' ? 'Results HIDDEN — public sees no ranking or winners' : m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
 
   return (
     <div className="panel panel-pad" style={{ marginBottom: 16 }}>
@@ -449,6 +451,18 @@ function ResultsControl() {
         ))}
       </div>
       <div className="hint" style={{ marginBottom: 10 }}>{RESULT_CHOICES.find(c => c[0] === mode)?.[2]}. Total votes and money raised are always admin-only, in every mode. Admins always see full votes.</div>
+      <div style={{ border: '1px dashed var(--gold, #c9a227)', borderRadius: 10, padding: '10px 12px', margin: '4px 0 12px', opacity: mode === 'closed' ? 1 : 0.55 }}>
+        <label className="checkbox-row" style={{ marginBottom: 4 }}>
+          <input type="checkbox" checked={shuffle} disabled={mode !== 'closed'}
+            onChange={e => save({ resultsShuffle: e.target.checked }, { results_shuffle: e.target.checked }, e.target.checked ? '🔀 Shuffle ON — public sees random order, no ranks' : 'Shuffle OFF — public sees the real ranking again')} />
+          <strong>🔀 Shuffle nominees</strong>
+        </label>
+        <div className="hint">
+          {mode === 'closed'
+            ? 'While ON, the public sees each category’s nominees in a fresh random order with no rank numbers, trophy, “neck and neck” badge, winners list or USSD rank, so nobody can tell who is ahead. Untick to bring back the real ranking instantly. Admins always see the truth.'
+            : 'Works with “Closed — ranking only”. Switch to that first.'}
+        </div>
+      </div>
       <label className="checkbox-row" style={{ marginBottom: 4 }}>
         <input type="checkbox" checked={raceBadge} onChange={e => save({ showRaceBadge: e.target.checked }, { show_race_badge: e.target.checked }, e.target.checked ? '“Neck and neck” badges ON' : 'Badges OFF')} />
         Show “🔥 Neck and neck” when the top two in a category are within about 10% (no numbers shown)
@@ -926,6 +940,7 @@ export function ExtraSettings() {
         votePriceGHS: Number(config.vote_price_ghs) || 1,
         votingOpenDate: config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : null,
         votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
+        votingCloseTime: config.voting_close_time,
         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
         ussdShortcode: config.ussd_shortcode || null,
         posterBgUrl: config.poster_bg_url || null,
@@ -998,8 +1013,12 @@ export function ExtraSettings() {
       <div className="two-col">
         <div className="field"><label>Voting opens</label>
           <input type="text" placeholder="YYYY-MM-DD" value={config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : ''} onChange={e => set('voting_open_date', e.target.value)} /></div>
-        <div className="field"><label>Voting closes</label>
-          <input type="text" placeholder="YYYY-MM-DD" value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} /></div>
+        <div className="field"><label>Voting closes (date and time)</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="text" placeholder="YYYY-MM-DD" style={{ flex: '1 1 60%' }} value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} />
+            <input type="time" style={{ flex: '1 1 40%' }} value={config.voting_close_time || ''} onChange={e => set('voting_close_time', e.target.value)} />
+          </div>
+          <div className="hint">Time is Ghana time (GMT). Leave the time blank to close at the end of that day. The countdown and the real cut-off both use it.</div></div>
       </div>
       <div className="two-col">
         <div className="field"><label>Price per single vote (GH₵)</label>
