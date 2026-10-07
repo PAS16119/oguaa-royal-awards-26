@@ -89,7 +89,7 @@ export async function POST(req) {
       await sql`
         UPDATE config SET
           results_mode    = ${mode},
-          results_public  = ${mode !== 'closed'},
+          results_public  = ${mode !== 'closed' && mode !== 'hidden'},
           show_race_badge = ${b.showRaceBadge ?? cur.show_race_badge ?? true},
           show_countdown  = ${b.showCountdown ?? cur.show_countdown ?? true}
         WHERE id = 'main'
@@ -98,6 +98,42 @@ export async function POST(req) {
       return Response.json({ error: 'Run lib/schema-v9.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
     }
     await logAudit({ type: 'main-admin' }, 'results_visibility_updated', { mode: b.resultsMode, raceBadge: b.showRaceBadge, countdown: b.showCountdown });
+  }
+  // Exact close time + shuffle live in schema-v10 columns, saved separately and
+  // only when sent, so everything else keeps working before that migration runs.
+  if (b.votingCloseTime !== undefined || b.resultsShuffle !== undefined) {
+    let t = b.votingCloseTime === undefined ? undefined : String(b.votingCloseTime || '').trim();
+    if (t && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(t)) {
+      return Response.json({ error: 'Close time must look like 18:00 (24-hour).' }, { status: 400 });
+    }
+    try {
+      await sql`
+        UPDATE config SET
+          voting_close_time = ${t === undefined ? (cur.voting_close_time ?? null) : (t || null)},
+          results_shuffle   = ${b.resultsShuffle ?? cur.results_shuffle ?? false}
+        WHERE id = 'main'
+      `;
+    } catch (e) {
+      return Response.json({ error: 'Run lib/schema-v10.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
+    }
+    await logAudit({ type: 'main-admin' }, 'results_shuffle_or_close_time_updated', { closeTime: t, shuffle: b.resultsShuffle });
+  }
+  // schema-v11: the "reveal winners" switch and the Reshuffle button. Reshuffle
+  // just picks a new seed; the shuffled order stays exactly as it is until then.
+  if (b.winnersPublic !== undefined || b.reshuffle === true) {
+    try {
+      if (b.winnersPublic !== undefined) {
+        await sql`UPDATE config SET winners_public = ${b.winnersPublic === true} WHERE id = 'main'`;
+      }
+      if (b.reshuffle === true) {
+        const seed = 1 + Math.floor(Math.random() * 2000000000);
+        await sql`UPDATE config SET shuffle_seed = ${seed} WHERE id = 'main'`;
+      }
+    } catch (e) {
+      return Response.json({ error: 'Run lib/schema-v11.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
+    }
+    if (b.winnersPublic !== undefined) await logAudit({ type: 'main-admin' }, 'winners_visibility_updated', { revealed: b.winnersPublic === true });
+    if (b.reshuffle === true) await logAudit({ type: 'main-admin' }, 'results_reshuffled', {});
   }
   await logAudit({ type: 'main-admin' }, 'settings_updated', {});
   return Response.json({ ok: true });

@@ -1,5 +1,5 @@
 import { sql } from '@/lib/db';
-import { getVisibility, categoryStats } from '@/lib/results';
+import { getVisibility, categoryStats, shuffleWithinCategories } from '@/lib/results';
 import { requireSection } from '@/lib/session';
 import { logAudit, actorFromSession } from '@/lib/audit';
 import { genId, genBallotCode } from '@/lib/codegen';
@@ -41,24 +41,34 @@ export async function GET(req) {
   `;
 
   // What this viewer may see. Admins always see full votes. Everyone else gets
-  // whatever the Main Admin chose: closed (ranking only), percent (ranking +
-  // % share of the category) or full (ranking + each nominee's votes). Total
-  // votes and money raised are never part of this response in any mode.
+  // whatever the Main Admin chose: hidden (nothing), closed (ranking only),
+  // percent (ranking + % share of the category) or full (ranking + each
+  // nominee's votes). Total votes and money raised are never part of this
+  // response in any mode. ?as=public lets a logged-in admin preview exactly
+  // what a voter gets.
   const vis = await getVisibility();
-  // ?as=public lets a logged-in admin preview exactly what a voter gets.
   const asPublic = searchParams.get('as') === 'public';
   const isAdmin = !asPublic && !!(await requireSection('voting'));
   const viewMode = isAdmin ? 'full' : vis.mode;
   const stats = categoryStats(rows);
+  // Shuffle: public sees a "not a ranking" order and no rank/badges. Admins always
+  // see the truth. The order is fixed (same for everyone, on every page load)
+  // until the admin presses Reshuffle, which just changes the seed.
+  const shuffled = !isAdmin && vis.shuffle;
+  const hideRank = viewMode === 'hidden' || shuffled;
+  const ordered = shuffled ? shuffleWithinCategories(rows, vis.shuffleSeed) : rows;
+  // Who the winners are is only sent once the admin has revealed them (or to an admin).
+  const sendWinners = vis.winners || isAdmin;
 
-  const out = rows.map(c => {
+  const out = ordered.map(c => {
     const st = stats.get(c.id) || {};
     return {
       ...c,
       votes: viewMode === 'full' ? Number(c.votes) : null,
       percent: viewMode === 'percent' ? st.percent : null,
-      rank: st.rank ?? null,
-      tight: vis.raceBadge ? !!st.tight : false,
+      rank: hideRank ? null : (st.rank ?? null),
+      tight: hideRank ? false : (vis.raceBadge ? !!st.tight : false),
+      ...(sendWinners ? { winner: st.rank === 1 } : {}),
     };
   });
 
@@ -66,6 +76,10 @@ export async function GET(req) {
     candidates: out,
     mode: viewMode,
     publicMode: vis.mode,
+    shuffled,
+    rankHidden: hideRank,
+    publicShuffle: vis.shuffle,
+    winnersPublic: vis.winners,
     viewerIsAdmin: isAdmin,
     showScores: viewMode === 'full',
   });

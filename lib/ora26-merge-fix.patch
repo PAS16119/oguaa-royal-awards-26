@@ -1,0 +1,572 @@
+diff --git a/app/admin/manage.js b/app/admin/manage.js
+index a1dbccb..689af62 100644
+--- a/app/admin/manage.js
++++ b/app/admin/manage.js
+@@ -412,6 +412,7 @@ export function CoAdminsTab() {
+ 
+ /* =========================================================== VOTING ===== */
+ const RESULT_CHOICES = [
++  ['hidden', '🙈 Hidden', 'Public sees nothing: no ranking, no winners, no “neck and neck” badges'],
+   ['closed', '🔒 Closed', 'Public sees each category’s ranking only — no votes, no percentages'],
+   ['percent', '📊 Percentages', 'Ranking plus each nominee’s % share of their category'],
+   ['full', '🔓 Full votes', 'Ranking plus each nominee’s vote count'],
+@@ -426,16 +427,18 @@ function ResultsControl() {
+     fetch('/api/config').then(r => r.json()).then(d => setCfg(d.config || {})).catch(() => {});
+   }, []);
+   if (!cfg) return null;
+-  const mode = ['closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
++  const mode = ['hidden', 'closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
+   const raceBadge = cfg.show_race_badge !== false;
+   const countdown = cfg.show_countdown !== false;
++  const shuffle = cfg.results_shuffle === true;
++  const winnersRevealed = cfg.winners_public === true;
+ 
+   async function save(patch, local, msg) {
+     try { await api('/api/config', 'POST', patch); setCfg(c => ({ ...c, ...local })); toast(msg); }
+     catch (e) { toast(e.message); }
+   }
+-  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' },
+-    m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
++  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' && m !== 'hidden' },
++    m === 'hidden' ? 'Results HIDDEN — public sees no ranking or winners' : m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
+ 
+   return (
+     <div className="panel panel-pad" style={{ marginBottom: 16 }}>
+@@ -449,6 +452,26 @@ function ResultsControl() {
+         ))}
+       </div>
+       <div className="hint" style={{ marginBottom: 10 }}>{RESULT_CHOICES.find(c => c[0] === mode)?.[2]}. Total votes and money raised are always admin-only, in every mode. Admins always see full votes.</div>
++      <div style={{ border: '1px dashed var(--gold, #c9a227)', borderRadius: 10, padding: '10px 12px', margin: '4px 0 12px', opacity: mode === 'closed' ? 1 : 0.55 }}>
++        <label className="checkbox-row" style={{ marginBottom: 4 }}>
++          <input type="checkbox" checked={shuffle} disabled={mode !== 'closed'}
++            onChange={e => save({ resultsShuffle: e.target.checked }, { results_shuffle: e.target.checked }, e.target.checked ? '🔀 Shuffle ON — public sees a shuffled order, no ranks' : 'Shuffle OFF — public sees the real ranking again')} />
++          <strong>🔀 Shuffle nominees</strong>
++        </label>
++        <div className="hint">
++          {mode === 'closed'
++            ? 'While ON, the public sees each category’s nominees who have votes in a shuffled order (not a ranking) with no rank numbers, trophy, “neck and neck” badge, winners list or USSD rank — and nominees still waiting for a first vote are listed last. The order stays EXACTLY the same for everyone until you press Reshuffle. Untick to bring back the real ranking instantly. Admins always see the truth.'
++            : 'Works with “Closed — ranking only”. Switch to that first.'}
++        </div>
++        <button className="btn btn-gold" style={{ marginTop: 10, fontSize: 13 }} disabled={mode !== 'closed' || !shuffle}
++          onClick={() => save({ reshuffle: true }, {}, '🔀 Reshuffled — everyone now sees the new order')}>
++          🔀 Reshuffle now
++        </button>
++      </div>
++      <label className="checkbox-row" style={{ marginBottom: 8, fontWeight: 700 }}>
++        <input type="checkbox" checked={winnersRevealed} onChange={e => save({ winnersPublic: e.target.checked }, { winners_public: e.target.checked }, e.target.checked ? '🏆 Winners REVEALED to the public' : 'Winners hidden again')} />
++        Reveal winners to the public (the Winners page and the 🏆 on results). Leave OFF until the announcement.
++      </label>
+       <label className="checkbox-row" style={{ marginBottom: 4 }}>
+         <input type="checkbox" checked={raceBadge} onChange={e => save({ showRaceBadge: e.target.checked }, { show_race_badge: e.target.checked }, e.target.checked ? '“Neck and neck” badges ON' : 'Badges OFF')} />
+         Show “🔥 Neck and neck” when the top two in a category are within about 10% (no numbers shown)
+@@ -1132,6 +1155,7 @@ export function ExtraSettings() {
+         votePriceGHS: Number(config.vote_price_ghs) || 1,
+         votingOpenDate: config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : null,
+         votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
++        votingCloseTime: config.voting_close_time,
+         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
+         ussdShortcode: config.ussd_shortcode || null,
+         posterBgUrl: config.poster_bg_url || null,
+@@ -1204,8 +1228,12 @@ export function ExtraSettings() {
+       <div className="two-col">
+         <div className="field"><label>Voting opens</label>
+           <input type="text" placeholder="YYYY-MM-DD" value={config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : ''} onChange={e => set('voting_open_date', e.target.value)} /></div>
+-        <div className="field"><label>Voting closes</label>
+-          <input type="text" placeholder="YYYY-MM-DD" value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} /></div>
++        <div className="field"><label>Voting closes (date and time)</label>
++          <div style={{ display: 'flex', gap: 8 }}>
++            <input type="text" placeholder="YYYY-MM-DD" style={{ flex: '1 1 60%' }} value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} />
++            <input type="time" style={{ flex: '1 1 40%' }} value={config.voting_close_time || ''} onChange={e => set('voting_close_time', e.target.value)} />
++          </div>
++          <div className="hint">Time is Ghana time (GMT). Leave the time blank to close at the end of that day. The countdown and the real cut-off both use it.</div></div>
+       </div>
+       <div className="two-col">
+         <div className="field"><label>Price per single vote (GH₵)</label>
+diff --git a/app/api/candidates/route.js b/app/api/candidates/route.js
+index 5175cd6..38b88dc 100644
+--- a/app/api/candidates/route.js
++++ b/app/api/candidates/route.js
+@@ -1,5 +1,5 @@
+ import { sql } from '@/lib/db';
+-import { getVisibility, categoryStats } from '@/lib/results';
++import { getVisibility, categoryStats, shuffleWithinCategories } from '@/lib/results';
+ import { requireSection } from '@/lib/session';
+ import { logAudit, actorFromSession } from '@/lib/audit';
+ import { genId, genBallotCode } from '@/lib/codegen';
+@@ -41,24 +41,34 @@ export async function GET(req) {
+   `;
+ 
+   // What this viewer may see. Admins always see full votes. Everyone else gets
+-  // whatever the Main Admin chose: closed (ranking only), percent (ranking +
+-  // % share of the category) or full (ranking + each nominee's votes). Total
+-  // votes and money raised are never part of this response in any mode.
++  // whatever the Main Admin chose: hidden (nothing), closed (ranking only),
++  // percent (ranking + % share of the category) or full (ranking + each
++  // nominee's votes). Total votes and money raised are never part of this
++  // response in any mode. ?as=public lets a logged-in admin preview exactly
++  // what a voter gets.
+   const vis = await getVisibility();
+-  // ?as=public lets a logged-in admin preview exactly what a voter gets.
+   const asPublic = searchParams.get('as') === 'public';
+   const isAdmin = !asPublic && !!(await requireSection('voting'));
+   const viewMode = isAdmin ? 'full' : vis.mode;
+   const stats = categoryStats(rows);
++  // Shuffle: public sees a "not a ranking" order and no rank/badges. Admins always
++  // see the truth. The order is fixed (same for everyone, on every page load)
++  // until the admin presses Reshuffle, which just changes the seed.
++  const shuffled = !isAdmin && vis.shuffle;
++  const hideRank = viewMode === 'hidden' || shuffled;
++  const ordered = shuffled ? shuffleWithinCategories(rows, vis.shuffleSeed) : rows;
++  // Who the winners are is only sent once the admin has revealed them (or to an admin).
++  const sendWinners = vis.winners || isAdmin;
+ 
+-  const out = rows.map(c => {
++  const out = ordered.map(c => {
+     const st = stats.get(c.id) || {};
+     return {
+       ...c,
+       votes: viewMode === 'full' ? Number(c.votes) : null,
+       percent: viewMode === 'percent' ? st.percent : null,
+-      rank: st.rank ?? null,
+-      tight: vis.raceBadge ? !!st.tight : false,
++      rank: hideRank ? null : (st.rank ?? null),
++      tight: hideRank ? false : (vis.raceBadge ? !!st.tight : false),
++      ...(sendWinners ? { winner: st.rank === 1 } : {}),
+     };
+   });
+ 
+@@ -66,6 +76,10 @@ export async function GET(req) {
+     candidates: out,
+     mode: viewMode,
+     publicMode: vis.mode,
++    shuffled,
++    rankHidden: hideRank,
++    publicShuffle: vis.shuffle,
++    winnersPublic: vis.winners,
+     viewerIsAdmin: isAdmin,
+     showScores: viewMode === 'full',
+   });
+diff --git a/app/api/config/route.js b/app/api/config/route.js
+index f93f4d5..9aa894e 100644
+--- a/app/api/config/route.js
++++ b/app/api/config/route.js
+@@ -89,7 +89,7 @@ export async function POST(req) {
+       await sql`
+         UPDATE config SET
+           results_mode    = ${mode},
+-          results_public  = ${mode !== 'closed'},
++          results_public  = ${mode !== 'closed' && mode !== 'hidden'},
+           show_race_badge = ${b.showRaceBadge ?? cur.show_race_badge ?? true},
+           show_countdown  = ${b.showCountdown ?? cur.show_countdown ?? true}
+         WHERE id = 'main'
+@@ -99,6 +99,42 @@ export async function POST(req) {
+     }
+     await logAudit({ type: 'main-admin' }, 'results_visibility_updated', { mode: b.resultsMode, raceBadge: b.showRaceBadge, countdown: b.showCountdown });
+   }
++  // Exact close time + shuffle live in schema-v10 columns, saved separately and
++  // only when sent, so everything else keeps working before that migration runs.
++  if (b.votingCloseTime !== undefined || b.resultsShuffle !== undefined) {
++    let t = b.votingCloseTime === undefined ? undefined : String(b.votingCloseTime || '').trim();
++    if (t && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(t)) {
++      return Response.json({ error: 'Close time must look like 18:00 (24-hour).' }, { status: 400 });
++    }
++    try {
++      await sql`
++        UPDATE config SET
++          voting_close_time = ${t === undefined ? (cur.voting_close_time ?? null) : (t || null)},
++          results_shuffle   = ${b.resultsShuffle ?? cur.results_shuffle ?? false}
++        WHERE id = 'main'
++      `;
++    } catch (e) {
++      return Response.json({ error: 'Run lib/schema-v10.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
++    }
++    await logAudit({ type: 'main-admin' }, 'results_shuffle_or_close_time_updated', { closeTime: t, shuffle: b.resultsShuffle });
++  }
++  // schema-v11: the "reveal winners" switch and the Reshuffle button. Reshuffle
++  // just picks a new seed; the shuffled order stays exactly as it is until then.
++  if (b.winnersPublic !== undefined || b.reshuffle === true) {
++    try {
++      if (b.winnersPublic !== undefined) {
++        await sql`UPDATE config SET winners_public = ${b.winnersPublic === true} WHERE id = 'main'`;
++      }
++      if (b.reshuffle === true) {
++        const seed = 1 + Math.floor(Math.random() * 2000000000);
++        await sql`UPDATE config SET shuffle_seed = ${seed} WHERE id = 'main'`;
++      }
++    } catch (e) {
++      return Response.json({ error: 'Run lib/schema-v11.sql in the Neon SQL editor first, then try again.' }, { status: 500 });
++    }
++    if (b.winnersPublic !== undefined) await logAudit({ type: 'main-admin' }, 'winners_visibility_updated', { revealed: b.winnersPublic === true });
++    if (b.reshuffle === true) await logAudit({ type: 'main-admin' }, 'results_reshuffled', {});
++  }
+   await logAudit({ type: 'main-admin' }, 'settings_updated', {});
+   return Response.json({ ok: true });
+ }
+diff --git a/app/api/votes/init/route.js b/app/api/votes/init/route.js
+index 5efd773..9159b72 100644
+--- a/app/api/votes/init/route.js
++++ b/app/api/votes/init/route.js
+@@ -1,4 +1,5 @@
+ import { sql } from '@/lib/db';
++import { votingCloseAt } from '@/lib/closing';
+ import { initializeTransaction, paystackConfigured } from '@/lib/paystack';
+ import { newVoteReference } from '@/lib/votes';
+ 
+@@ -20,7 +21,8 @@ export async function POST(req) {
+   if (cfg.voting_open_date && now < new Date(String(cfg.voting_open_date).slice(0, 10))) {
+     return Response.json({ error: 'Voting has not opened yet.' }, { status: 400 });
+   }
+-  if (cfg.voting_close_date && now > new Date(String(cfg.voting_close_date).slice(0, 10) + 'T23:59:59')) {
++  const closeAt = votingCloseAt(cfg);
++  if (closeAt && now > closeAt) {
+     return Response.json({ error: 'Voting has closed.' }, { status: 400 });
+   }
+ 
+diff --git a/app/vote/page.js b/app/vote/page.js
+index 875d9df..1ebfa3f 100644
+--- a/app/vote/page.js
++++ b/app/vote/page.js
+@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
+ import { useRouter } from 'next/navigation';
+ import { Shell, Seal, Toast, toast, CandidateSearch } from '../components';
+ import { useNow, fmtRemaining } from '../countdown';
++import { votingCloseAt, fmtCloseTime } from '../../lib/closing';
+ 
+ const VOTER_KEY = 'ora_voter';
+ 
+@@ -81,8 +82,8 @@ export default function VotePage() {
+     if (config.voting_enabled === false) closedMsg = 'Voting is not open right now.';
+     else if (config.voting_open_date && now < new Date(String(config.voting_open_date).slice(0, 10))) {
+       closedMsg = `Voting opens on ${fmtDate(config.voting_open_date)}.`;
+-    } else if (config.voting_close_date && now > new Date(String(config.voting_close_date).slice(0, 10) + 'T23:59:59')) {
+-      closedMsg = `Voting closed on ${fmtDate(config.voting_close_date)}. Thank you for your support!`;
++    } else if (votingCloseAt(config) && now > votingCloseAt(config)) {
++      closedMsg = `Voting closed on ${fmtDate(config.voting_close_date)}${fmtCloseTime(config) ? ' at ' + fmtCloseTime(config) : ''}. Thank you for your support!`;
+     }
+   }
+ 
+@@ -135,13 +136,13 @@ export default function VotePage() {
+           </div>
+ 
+           {!closedMsg && config?.voting_close_date && config.show_countdown !== false && (() => {
+-            const left = new Date(String(config.voting_close_date).slice(0, 10) + 'T23:59:59').getTime() - nowMs;
++            const left = votingCloseAt(config).getTime() - nowMs;
+             const txt = fmtRemaining(left);
+             if (!txt) return null;
+             const final = left < 48 * 3600 * 1000;
+             return (
+               <div className="banner banner-gold" style={{ marginBottom: 20, fontWeight: final ? 700 : 500 }}>
+-                ⏳ Voting closes in <strong style={{ margin: '0 4px' }}>{txt}</strong>{final ? ' — final hours, make every vote count!' : ''}
++                ⏳ Voting closes in <strong style={{ margin: '0 4px' }}>{txt}</strong>{fmtCloseTime(config) ? <span style={{ fontWeight: 400, fontSize: 13 }}>({fmtDate(config.voting_close_date)}, {fmtCloseTime(config)} GMT)</span> : null}{final ? ' — final hours, make every vote count!' : ''}
+               </div>
+             );
+           })()}
+diff --git a/app/vote/poster/[code]/page.js b/app/vote/poster/[code]/page.js
+index a83440c..061a1e1 100644
+--- a/app/vote/poster/[code]/page.js
++++ b/app/vote/poster/[code]/page.js
+@@ -9,10 +9,12 @@ export default function NomineePosterPage({ params }) {
+   const [shortcode, setShortcode] = useState(null);
+   const [bgUrl, setBgUrl] = useState(null);
+   const [downloading, setDownloading] = useState(false);
++  const [rankHidden, setRankHidden] = useState(false);
+ 
+   useEffect(() => {
+     fetch('/api/candidates').then(r => r.json()).then(d => {
+       const match = (d.candidates || []).find(c => c.ballot_code === code);
++      setRankHidden(!!d.rankHidden);
+       setCandidate(match || null);
+     }).catch(() => setCandidate(null));
+     fetch('/api/public/summary').then(r => r.json()).then(d => {
+@@ -76,7 +78,9 @@ export default function NomineePosterPage({ params }) {
+           {candidate && (
+             <>
+               <div className="panel panel-pad" style={{ marginBottom: 16, textAlign: 'center' }}>
+-                {candidate.rank ? (
++                {rankHidden ? (
++                  <div style={{ fontSize: 14 }}>Voting is on in {candidate.award_name}. Results stay private until the awards night, so share your poster and keep the votes coming!</div>
++                ) : candidate.rank ? (
+                   <>
+                     <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Right now in {candidate.award_name}</div>
+                     <div style={{ fontSize: 26, fontWeight: 800, margin: '4px 0' }}>
+diff --git a/app/vote/results/page.js b/app/vote/results/page.js
+index 32f3036..43bed99 100644
+--- a/app/vote/results/page.js
++++ b/app/vote/results/page.js
+@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react';
+ import { Shell, Toast, CandidateSearch } from '../../components';
+ 
+ const MODE_NOTE = {
++  hidden: 'Results are being kept private until the winners are announced.',
+   closed: 'Showing the current ranking in each category.',
++  shuffled: 'Not a ranking. Nominees who have received votes are shown in a shuffled order — nominees still waiting for their first vote are listed last. Every vote can move you into the race!',
+   percent: 'Each nominee’s share of the votes in their category. Updated live.',
+   full: 'Votes per nominee in each category. Updated the moment a vote is confirmed.',
+ };
+-const MODE_LABEL = { closed: 'Closed — ranking only', percent: 'Percentages', full: 'Full votes' };
++const MODE_LABEL = { hidden: 'Hidden — nothing shown', closed: 'Closed — ranking only', percent: 'Percentages', full: 'Full votes' };
+ 
+ // Per-category results. Total votes and money raised are NOT shown here to the
+ // public — only a logged-in admin gets that banner (the API only sends the
+@@ -33,6 +35,8 @@ export default function VoteResultsPage() {
+ 
+   const candidates = data ? data.candidates || [] : null;
+   const mode = data?.mode || 'closed';
++  const shuffled = !!data?.shuffled;
++  const winnersVisible = !!(data?.winnersPublic || data?.viewerIsAdmin);
+ 
+   const sections = {};
+   (candidates || []).forEach(c => {
+@@ -44,7 +48,8 @@ export default function VoteResultsPage() {
+   });
+   // Order by the server-computed rank (works in every mode); anyone without a
+   // rank yet (no votes) goes last, alphabetically.
+-  Object.values(sections).forEach(awards => {
++  // When shuffled, keep the server's fixed shuffled order: no sorting by anything.
++  if (!shuffled) Object.values(sections).forEach(awards => {
+     Object.values(awards).forEach(list => list.sort((a, b) =>
+       (a.rank ?? 9999) - (b.rank ?? 9999) || a.nominee_name.localeCompare(b.nominee_name)));
+   });
+@@ -63,8 +68,8 @@ export default function VoteResultsPage() {
+               <span className="section-tag">Results</span>
+               <h2>Voting results by category</h2>
+               <div className="sub">
+-                {MODE_NOTE[mode]}
+-                {' · '}<a href="/vote/winners" style={{ color: 'inherit', textDecoration: 'underline' }}>Winners only →</a>
++                {shuffled ? MODE_NOTE.shuffled : MODE_NOTE[mode]}
++                {winnersVisible && <>{' · '}<a href="/vote/winners" style={{ color: 'inherit', textDecoration: 'underline' }}>Winners only →</a></>}
+               </div>
+             </div>
+           </div>
+@@ -75,7 +80,7 @@ export default function VoteResultsPage() {
+               <div style={{ fontSize: 13 }}>
+                 You're logged in as admin in this browser. Voters never see this box or the numbers in it.
+                 {adminTotals && <> Total: <strong>{adminTotals.votesTotal}</strong> votes · <strong>GH₵{(adminTotals.voteRevenueGHS || 0).toFixed(2)}</strong> raised.</>}
+-                {' '}Voters currently see: <strong>{MODE_LABEL[data?.publicMode] || data?.publicMode}</strong>.
++                {' '}Voters currently see: <strong>{MODE_LABEL[data?.publicMode] || data?.publicMode}{data?.publicShuffle ? ' (shuffled order)' : ''}</strong>.
+               </div>
+               <button className="btn btn-gold" style={{ marginTop: 10, fontSize: 13 }} onClick={() => setPreview(true)}>See it exactly as a voter does</button>
+             </div>
+@@ -88,7 +93,7 @@ export default function VoteResultsPage() {
+             </div>
+           )}
+ 
+-          {candidates && candidates.length > 0 && (
++          {mode !== 'hidden' && !shuffled && candidates && candidates.length > 0 && (
+             <CandidateSearch
+               candidates={candidates}
+               placeholder="Find a nominee to see where they stand…"
+@@ -104,6 +109,10 @@ export default function VoteResultsPage() {
+ 
+           {candidates === null ? (
+             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
++          ) : mode === 'hidden' ? (
++            <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
++              🔒 Results are hidden while voting is on. Winners will be announced at the Oguaa Royal Awards Night.
++            </div>
+           ) : candidates.length === 0 ? (
+             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
+           ) : Object.keys(visibleSections).map(section => (
+@@ -126,12 +135,12 @@ export default function VoteResultsPage() {
+                         <div key={c.id} style={{ marginBottom: 12, padding: c.id === focusId ? '6px 8px' : 0, borderRadius: 8, background: c.id === focusId ? 'rgba(201,162,39,.16)' : 'transparent' }}>
+                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: showBar ? 4 : 0 }}>
+                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+-                              <span style={{ color: 'var(--ink-soft)', fontSize: 11.5, minWidth: 18 }}>{c.rank ? `#${c.rank}` : '–'}</span>
++                              {!shuffled && <span style={{ color: 'var(--ink-soft)', fontSize: 11.5, minWidth: 18 }}>{c.rank ? `#${c.rank}` : '–'}</span>}
+                               {c.photo_url && (
+                                 <img src={c.photo_url} alt="" width={22} height={22}
+                                      style={{ borderRadius: '50%', objectFit: 'cover', objectPosition: 'top center', flex: 'none' }} />
+                               )}
+-                              {c.rank === 1 ? '🏆 ' : ''}{c.nominee_name}
++                              {c.winner ? '🏆 ' : ''}{c.nominee_name}
+                             </span>
+                             {mode === 'full' && <strong>{c.votes}</strong>}
+                             {mode === 'percent' && <strong>{c.percent}%</strong>}
+diff --git a/app/vote/winners/page.js b/app/vote/winners/page.js
+index 4684284..6abb99a 100644
+--- a/app/vote/winners/page.js
++++ b/app/vote/winners/page.js
+@@ -6,9 +6,16 @@ import { Shell, Toast } from '../../components';
+ // (ties show everyone on the top rank). No scores, no totals, no money.
+ export default function WinnersPage() {
+   const [candidates, setCandidates] = useState(null);
++  const [revealed, setRevealed] = useState(false);
++  const [isAdmin, setIsAdmin] = useState(false);
+ 
+   useEffect(() => {
+-    fetch('/api/candidates').then(r => r.json()).then(d => setCandidates(d.candidates || [])).catch(() => setCandidates([]));
++    fetch('/api/candidates').then(r => r.json()).then(d => {
++      setRevealed(!!d.winnersPublic);
++      setIsAdmin(!!d.viewerIsAdmin);
++      // Names are only kept in the page once winners are revealed (or for an admin).
++      setCandidates(d.winnersPublic || d.viewerIsAdmin ? (d.candidates || []) : []);
++    }).catch(() => setCandidates([]));
+   }, []);
+ 
+   const sections = {};
+@@ -34,8 +41,21 @@ export default function WinnersPage() {
+             </div>
+           </div>
+ 
++          {isAdmin && !revealed && (
++            <div className="banner banner-gold" style={{ marginBottom: 16, display: 'block', border: '2px dashed #b45309' }}>
++              👁 ADMIN VIEW — winners are still hidden from the public. Reveal them from the Voting tab when you are ready to announce.
++            </div>
++          )}
++
+           {candidates === null ? (
+             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
++          ) : !revealed && !isAdmin ? (
++            <div className="panel panel-pad" style={{ textAlign: 'center' }}>
++              <div style={{ fontSize: 34 }}>🎉</div>
++              <div style={{ fontWeight: 700, margin: '6px 0' }}>🔒 Winners will be announced at the Oguaa Royal Awards Night.</div>
++              <div style={{ color: 'var(--ink-soft)', fontSize: 13.5 }}>Keep voting — every vote counts until voting closes.</div>
++              <a href="/vote" style={{ display: 'inline-block', marginTop: 10, color: 'inherit', textDecoration: 'underline' }}>Back to the ballot →</a>
++            </div>
+           ) : candidates.length === 0 ? (
+             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
+           ) : Object.keys(sections).map(section => (
+@@ -43,7 +63,7 @@ export default function WinnersPage() {
+               <h3 style={{ marginBottom: 10 }}>{section}</h3>
+               <div className="panel panel-pad">
+                 {Object.keys(sections[section]).map((award, i, arr) => {
+-                  const winners = sections[section][award].filter(c => c.rank === 1);
++                  const winners = sections[section][award].filter(c => c.winner);
+                   return (
+                     <div key={award} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--parchment-2)' : 'none' }}>
+                       <div style={{ fontSize: 13, color: 'var(--ink-soft)', flex: '1 1 40%' }}>{award}</div>
+diff --git a/lib/results.js b/lib/results.js
+index e7b0eed..1762a2e 100644
+--- a/lib/results.js
++++ b/lib/results.js
+@@ -1,6 +1,8 @@
+ import { sql } from './db';
+ 
+-export const RESULT_MODES = ['closed', 'percent', 'full'];
++// hidden  = public sees no ranking, no winners, no badges at all
++// closed  = public sees ranking only
++export const RESULT_MODES = ['hidden', 'closed', 'percent', 'full'];
+ 
+ // Works on any config row. Falls back to the old results_public flag so the
+ // site keeps behaving sensibly if schema-v9 has not been run yet.
+@@ -10,17 +12,22 @@ export function modeFromConfig(cfg) {
+ }
+ 
+ export async function getVisibility() {
+-  let cfg = {};
+-  try {
+-    cfg = (await sql`SELECT results_public, results_mode, show_race_badge, show_countdown FROM config WHERE id = 'main'`)[0] || {};
+-  } catch {
+-    // schema-v9 not applied yet
+-    cfg = (await sql`SELECT results_public FROM config WHERE id = 'main'`)[0] || {};
+-  }
++  // SELECT * so this keeps working whichever schema migrations have been run.
++  const cfg = (await sql`SELECT * FROM config WHERE id = 'main'`)[0] || {};
++  const mode = modeFromConfig(cfg);
+   return {
+-    mode: modeFromConfig(cfg),
++    mode,
++    // Shuffle only means something while the public sees ranking only. With
++    // percentages or votes on show, a shuffled list would contradict the numbers.
++    shuffle: mode === 'closed' && cfg.results_shuffle === true,
++    // The shuffled order is FIXED until the admin presses "Reshuffle", which
++    // just picks a new seed. (No seed column yet -> 1, still stable.)
++    shuffleSeed: Number(cfg.shuffle_seed) || 1,
+     raceBadge: cfg.show_race_badge !== false,
+     countdown: cfg.show_countdown !== false,
++    // Winners (the Winners page and the trophy) are only public once the admin
++    // reveals them — and stay hidden if schema-v11 has not been run yet.
++    winners: cfg.winners_public === true,
+   };
+ }
+ 
+@@ -60,3 +67,42 @@ export function categoryStats(rows) {
+   });
+   return out;
+ }
++
++// Small, fast, deterministic string hash (FNV-1a with a final mix) — used to give
++// every nominee a fixed "dice roll" for a given seed.
++function hash32(str) {
++  let h = 2166136261;
++  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
++  h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15;
++  return h >>> 0;
++}
++
++// The public's "not a ranking" order. Only nominees who are actually competing
++// (votes > 0) are shuffled; nominees with no votes yet sit together at the bottom
++// of their category in a fixed, non-alphabetical order (by ballot code), so they
++// never get mixed in with the competitors.
++//
++// The shuffle is STABLE: the same seed always gives the same order, however many
++// people load the page, until the admin presses "Reshuffle" (new seed). A nominee
++// who gets a first vote joins the shuffled group straight away, at the place
++// their own roll gives them. `rows` must already be grouped by category.
++export function shuffleWithinCategories(rows, seed = 1) {
++  const out = [];
++  const key = r => `${r.section_label || ''}|${r.award_name || ''}`;
++  let i = 0;
++  while (i < rows.length) {
++    let j = i;
++    while (j < rows.length && key(rows[j]) === key(rows[i])) j++;
++    const grp = rows.slice(i, j);
++    const k = key(rows[i]);
++    const competing = grp.filter(c => Number(c.votes) > 0)
++      .map(c => ({ c, h: hash32(`${seed}|${k}|${c.id}`) }))
++      .sort((a, b) => a.h - b.h || String(a.c.id).localeCompare(String(b.c.id)))
++      .map(x => x.c);
++    const idle = grp.filter(c => !(Number(c.votes) > 0))
++      .sort((a, b) => String(a.ballot_code || a.id).localeCompare(String(b.ballot_code || b.id)));
++    out.push(...competing, ...idle);
++    i = j;
++  }
++  return out;
++}
+diff --git a/lib/schema-v11.sql b/lib/schema-v11.sql
+new file mode 100644
+index 0000000..b8b7ec0
+--- /dev/null
++++ b/lib/schema-v11.sql
+@@ -0,0 +1,11 @@
++-- Schema v11 — "reveal winners" switch + a fixed shuffle seed (for the Reshuffle button).
++-- Run once in the Neon SQL editor (safe to re-run). It does not touch votes, payments or nominees.
++--
++-- Run this AFTER schema-v9.sql and schema-v10.sql (v10 adds the shuffle switch and the close time).
++
++-- Winners (the Winners page and the trophy) stay hidden from the public until the admin reveals them.
++ALTER TABLE config ADD COLUMN IF NOT EXISTS winners_public boolean NOT NULL DEFAULT false;
++
++-- The shuffled order is derived from this number, so it stays EXACTLY the same for everyone
++-- until the admin presses "Reshuffle", which just picks a new number.
++ALTER TABLE config ADD COLUMN IF NOT EXISTS shuffle_seed integer NOT NULL DEFAULT 1;
+diff --git a/lib/ussd.js b/lib/ussd.js
+index dfc535c..acf0b98 100644
+--- a/lib/ussd.js
++++ b/lib/ussd.js
+@@ -3,6 +3,7 @@ import { modeFromConfig } from './results';
+ import { newVoteReference } from './votes';
+ import { chargeMobileMoney, submitOtp, mapNetworkToProvider } from './momo';
+ import { logAudit } from './audit';
++import { votingCloseAt } from './closing';
+ 
+ // --- session storage -------------------------------------------------------
+ // Arkesel only sends the single latest keypress per request (see schema-v5.sql
+@@ -65,7 +66,8 @@ function votingWindowOpen(cfg) {
+   if (!cfg.voting_enabled) return false;
+   const now = new Date();
+   if (cfg.voting_open_date && now < new Date(String(cfg.voting_open_date).slice(0, 10))) return false;
+-  if (cfg.voting_close_date && now > new Date(String(cfg.voting_close_date).slice(0, 10) + 'T23:59:59')) return false;
++  const closeAt = votingCloseAt(cfg);
++  if (closeAt && now > closeAt) return false;
+   return true;
+ }
+ 
+@@ -256,6 +258,7 @@ async function stateResultsCode(input, session, cfg) {
+     FROM candidates
+     WHERE active = true AND award_name = ${c.award_name} AND section_label = ${c.section_label}
+   `;
++  if (mode === 'hidden' || (mode === 'closed' && cfg.results_shuffle === true)) return end(`${c.nominee_name} (${c.award_name}): results are private until the awards night. Keep voting!`);
+   if (mine === 0) return end(`${c.nominee_name} (${c.award_name}): no votes yet. Be the first!`);
+   const pos = `#${peers[0].ahead + 1}`;
+   if (mode === 'full') return end(`${c.nominee_name} (${c.award_name}): ${pos}, ${mine} vote(s) so far.`);

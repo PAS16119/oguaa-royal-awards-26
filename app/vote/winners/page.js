@@ -6,9 +6,16 @@ import { Shell, Toast } from '../../components';
 // (ties show everyone on the top rank). No scores, no totals, no money.
 export default function WinnersPage() {
   const [candidates, setCandidates] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    fetch('/api/candidates').then(r => r.json()).then(d => setCandidates(d.candidates || [])).catch(() => setCandidates([]));
+    fetch('/api/candidates').then(r => r.json()).then(d => {
+      setRevealed(!!d.winnersPublic);
+      setIsAdmin(!!d.viewerIsAdmin);
+      // Names are only kept in the page once winners are revealed (or for an admin).
+      setCandidates(d.winnersPublic || d.viewerIsAdmin ? (d.candidates || []) : []);
+    }).catch(() => setCandidates([]));
   }, []);
 
   const sections = {};
@@ -34,8 +41,21 @@ export default function WinnersPage() {
             </div>
           </div>
 
+          {isAdmin && !revealed && (
+            <div className="banner banner-gold" style={{ marginBottom: 16, display: 'block', border: '2px dashed #b45309' }}>
+              👁 ADMIN VIEW — winners are still hidden from the public. Reveal them from the Voting tab when you are ready to announce.
+            </div>
+          )}
+
           {candidates === null ? (
             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
+          ) : !revealed && !isAdmin ? (
+            <div className="panel panel-pad" style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 34 }}>🎉</div>
+              <div style={{ fontWeight: 700, margin: '6px 0' }}>🔒 Winners will be announced at the Oguaa Royal Awards Night.</div>
+              <div style={{ color: 'var(--ink-soft)', fontSize: 13.5 }}>Keep voting — every vote counts until voting closes.</div>
+              <a href="/vote" style={{ display: 'inline-block', marginTop: 10, color: 'inherit', textDecoration: 'underline' }}>Back to the ballot →</a>
+            </div>
           ) : candidates.length === 0 ? (
             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
           ) : Object.keys(sections).map(section => (
@@ -43,7 +63,7 @@ export default function WinnersPage() {
               <h3 style={{ marginBottom: 10 }}>{section}</h3>
               <div className="panel panel-pad">
                 {Object.keys(sections[section]).map((award, i, arr) => {
-                  const winners = sections[section][award].filter(c => c.rank === 1);
+                  const winners = sections[section][award].filter(c => c.winner);
                   return (
                     <div key={award} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--parchment-2)' : 'none' }}>
                       <div style={{ fontSize: 13, color: 'var(--ink-soft)', flex: '1 1 40%' }}>{award}</div>
