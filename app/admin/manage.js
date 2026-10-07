@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast, compressImageFile, uploadPhotoDataUrl, matchCandidates } from '../components';
 import PosterCard from '../vote/poster/PosterCard';
 
@@ -412,7 +412,6 @@ export function CoAdminsTab() {
 
 /* =========================================================== VOTING ===== */
 const RESULT_CHOICES = [
-  ['hidden', '🙈 Hidden', 'Public sees nothing: no ranking, no winners, no “neck and neck” badges'],
   ['closed', '🔒 Closed', 'Public sees each category’s ranking only — no votes, no percentages'],
   ['percent', '📊 Percentages', 'Ranking plus each nominee’s % share of their category'],
   ['full', '🔓 Full votes', 'Ranking plus each nominee’s vote count'],
@@ -427,17 +426,16 @@ function ResultsControl() {
     fetch('/api/config').then(r => r.json()).then(d => setCfg(d.config || {})).catch(() => {});
   }, []);
   if (!cfg) return null;
-  const mode = ['hidden', 'closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
+  const mode = ['closed', 'percent', 'full'].includes(cfg.results_mode) ? cfg.results_mode : (cfg.results_public === false ? 'closed' : 'full');
   const raceBadge = cfg.show_race_badge !== false;
   const countdown = cfg.show_countdown !== false;
-  const shuffle = cfg.results_shuffle === true;
 
   async function save(patch, local, msg) {
     try { await api('/api/config', 'POST', patch); setCfg(c => ({ ...c, ...local })); toast(msg); }
     catch (e) { toast(e.message); }
   }
-  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' && m !== 'hidden' },
-    m === 'hidden' ? 'Results HIDDEN — public sees no ranking or winners' : m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
+  const setMode = m => save({ resultsMode: m }, { results_mode: m, results_public: m !== 'closed' },
+    m === 'closed' ? 'Results CLOSED — public sees ranking only' : m === 'percent' ? 'Public now sees percentages' : 'Public now sees full votes');
 
   return (
     <div className="panel panel-pad" style={{ marginBottom: 16 }}>
@@ -451,18 +449,6 @@ function ResultsControl() {
         ))}
       </div>
       <div className="hint" style={{ marginBottom: 10 }}>{RESULT_CHOICES.find(c => c[0] === mode)?.[2]}. Total votes and money raised are always admin-only, in every mode. Admins always see full votes.</div>
-      <div style={{ border: '1px dashed var(--gold, #c9a227)', borderRadius: 10, padding: '10px 12px', margin: '4px 0 12px', opacity: mode === 'closed' ? 1 : 0.55 }}>
-        <label className="checkbox-row" style={{ marginBottom: 4 }}>
-          <input type="checkbox" checked={shuffle} disabled={mode !== 'closed'}
-            onChange={e => save({ resultsShuffle: e.target.checked }, { results_shuffle: e.target.checked }, e.target.checked ? '🔀 Shuffle ON — public sees random order, no ranks' : 'Shuffle OFF — public sees the real ranking again')} />
-          <strong>🔀 Shuffle nominees</strong>
-        </label>
-        <div className="hint">
-          {mode === 'closed'
-            ? 'While ON, the public sees each category’s nominees in a fresh random order with no rank numbers, trophy, “neck and neck” badge, winners list or USSD rank, so nobody can tell who is ahead. Untick to bring back the real ranking instantly. Admins always see the truth.'
-            : 'Works with “Closed — ranking only”. Switch to that first.'}
-        </div>
-      </div>
       <label className="checkbox-row" style={{ marginBottom: 4 }}>
         <input type="checkbox" checked={raceBadge} onChange={e => save({ showRaceBadge: e.target.checked }, { show_race_badge: e.target.checked }, e.target.checked ? '“Neck and neck” badges ON' : 'Badges OFF')} />
         Show “🔥 Neck and neck” when the top two in a category are within about 10% (no numbers shown)
@@ -549,6 +535,10 @@ function BallotTab() {
 
   return (
     <div>
+      <details style={{ marginBottom: 16 }}>
+        <summary className="small-btn" style={{ display: 'inline-block', cursor: 'pointer' }}>⬇ Download all posters (.zip)</summary>
+        <div style={{ marginTop: 10 }}><BulkPosterExport /></div>
+      </details>
       <input
         type="search"
         value={ballotSearch}
@@ -623,6 +613,208 @@ function BallotTab() {
       </div>
 
       {posterFor && <CandidatePoster candidate={posterFor} onClose={() => setPosterFor(null)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bulk poster export: one poster per nominee on the ballot, zipped into folders
+// by group (and named by category), so nobody has to download them one by one.
+//
+// Each poster is drawn with the same PosterCard used everywhere else, off-screen,
+// one at a time, then captured with html2canvas at 2x (1080 x 1080). Nothing is
+// uploaded or stored — it all happens in this browser and ends as one download.
+// ---------------------------------------------------------------------------
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const safeName = s => String(s || 'Other').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Other';
+
+async function loadHtml2canvas() {
+  if (window.html2canvas) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = resolve; s.onerror = () => reject(new Error('Could not load the image tool — check your internet connection.'));
+    document.head.appendChild(s);
+  });
+}
+
+// Waits until the poster has scaled itself and every image (photo, logo, QR) has
+// actually loaded. The QR comes from an online service that can be slow or
+// refuse a burst of requests, so a failed image is retried a few times before the
+// poster is reported as failed — a poster is never silently exported without it.
+async function waitForPoster(mount) {
+  let node = null;
+  for (let t = 0; t < 150; t++) {
+    node = mount.querySelector('#poster-card');
+    if (node && node.style.visibility === 'visible') break;
+    await sleep(30);
+  }
+  if (!node) throw new Error('the poster did not render');
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const imgs = [...node.querySelectorAll('img')];
+    await Promise.all(imgs.map(img => (img.complete ? null : new Promise(res => {
+      img.addEventListener('load', res, { once: true });
+      img.addEventListener('error', res, { once: true });
+      setTimeout(res, 12000);
+    }))));
+    const bad = imgs.filter(img => !img.complete || img.naturalWidth === 0);
+    if (bad.length === 0) break;
+    if (attempt === 3) throw new Error(`${bad[0].alt || 'an image'} would not load`);
+    await sleep(800 * (attempt + 1));
+    bad.forEach(img => { try { const u = new URL(img.src, window.location.href); u.searchParams.set('_r', String(attempt + 1)); img.src = u.toString(); } catch (e) { /* ignore */ } });
+  }
+  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  return node;
+}
+
+export function BulkPosterExport() {
+  const [cands, setCands] = useState(null);
+  const [err, setErr] = useState('');
+  const [cfg, setCfg] = useState({ shortcode: null, bgUrl: null });
+  const [scope, setScope] = useState('__all__');
+  const [fmt, setFmt] = useState('png');
+  const [prog, setProg] = useState(null);
+  const cancelRef = useRef(false);
+
+  useEffect(() => {
+    fetch('/api/candidates?all=1')
+      .then(r => { if (!r.ok) throw new Error(r.status === 403 ? 'You need Voting access to export posters.' : 'Could not load the ballot.'); return r.json(); })
+      .then(d => setCands((d.candidates || []).filter(c => c.active && c.ballot_code)))
+      .catch(e => setErr(e.message));
+    fetch('/api/public/summary').then(r => r.json())
+      .then(d => setCfg({ shortcode: d?.config?.ussd_shortcode || null, bgUrl: d?.config?.poster_bg_url || null }))
+      .catch(() => {});
+  }, []);
+
+  const groups = [...new Set((cands || []).map(c => c.section_label || 'Other'))].sort();
+  const countFor = g => (cands || []).filter(c => (c.section_label || 'Other') === g).length;
+  const busy = !!prog && !prog.finished;
+
+  async function run() {
+    const list = (cands || []).filter(c => scope === '__all__' || (c.section_label || 'Other') === scope);
+    if (list.length === 0) { toast('No posters to export'); return; }
+    cancelRef.current = false;
+    const failed = [];
+    setProg({ done: 0, total: list.length, name: '', failed: [], finished: false });
+    let host = null;
+    try {
+      await loadHtml2canvas();
+      const [{ default: JSZip }, { createRoot }] = await Promise.all([import('jszip'), import('react-dom/client')]);
+      if (cfg.bgUrl) await new Promise(res => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = im.onerror = res; im.src = cfg.bgUrl; });
+
+      host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:540px;pointer-events:none;';
+      document.body.appendChild(host);
+
+      const zip = new JSZip();
+      const used = new Set();
+      const ext = fmt === 'jpg' ? 'jpg' : 'png';
+      const origin = window.location.origin;
+
+      for (let i = 0; i < list.length; i++) {
+        if (cancelRef.current) break;
+        const c = list[i];
+        setProg(p => ({ ...p, done: i, name: c.nominee_name }));
+        const mount = document.createElement('div');
+        mount.style.width = '540px';
+        host.appendChild(mount);
+        const root = createRoot(mount);
+        try {
+          root.render(<PosterCard candidate={c} voteUrl={`${origin}/vote?code=${c.ballot_code}`} shortcode={cfg.shortcode} bgUrl={cfg.bgUrl} />);
+          const node = await waitForPoster(mount);
+          const canvas = await window.html2canvas(node, { useCORS: true, backgroundColor: fmt === 'jpg' ? '#180f3d' : null, scale: 2 });
+          const blob = await new Promise(res => canvas.toBlob(res, fmt === 'jpg' ? 'image/jpeg' : 'image/png', 0.92));
+          if (!blob) throw new Error('could not create the image');
+          const folder = safeName(c.section_label);
+          const base = `${safeName(c.award_name)}__${safeName(c.nominee_name)}`;
+          let path = `${folder}/${base}.${ext}`;
+          if (used.has(path)) path = `${folder}/${base}__${c.ballot_code}.${ext}`;
+          used.add(path);
+          zip.file(path, blob);
+        } catch (e) {
+          failed.push(`${c.nominee_name} (${c.award_name}) — ${e.message || 'failed'}`);
+        } finally {
+          root.unmount();
+          mount.remove();
+        }
+      }
+
+      const made = list.length - failed.length;
+      if (cancelRef.current) { setProg(p => ({ ...p, finished: true, cancelled: true, failed })); toast('Export cancelled'); return; }
+      if (made === 0) { setProg(p => ({ ...p, finished: true, failed })); toast('No posters could be made'); return; }
+
+      setProg(p => ({ ...p, done: list.length, name: '', zipping: true, failed }));
+      const out = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      const url = URL.createObjectURL(out);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = scope === '__all__' ? 'Oguaa_Royal_Awards_Posters.zip' : `Oguaa_Royal_Awards_Posters_${safeName(scope)}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+      setProg(p => ({ ...p, zipping: false, finished: true, made, failed }));
+      toast(failed.length ? `${made} posters downloaded, ${failed.length} failed` : `${made} posters downloaded`);
+    } catch (e) {
+      setProg(p => ({ ...(p || { total: list.length, done: 0 }), finished: true, failed, fatal: e.message || 'Something went wrong' }));
+      toast(e.message || 'Poster export failed');
+    } finally {
+      if (host) host.remove();
+    }
+  }
+
+  return (
+    <div className="panel panel-pad">
+      <h3 style={{ marginTop: 0 }}>Export all posters</h3>
+      <p style={{ color: 'var(--ink-soft)', fontSize: '13.5px' }}>
+        One poster for every nominee on the ballot, saved in folders by group and named by category — no more downloading them one by one.
+        Hidden nominees are left out. Best on a laptop: a hundred or more posters can take a few minutes, so keep this tab open.
+      </p>
+      {err ? <div className="banner banner-bad">{err}</div> : cands === null ? <div className="hint">Loading the ballot…</div> : cands.length === 0 ? (
+        <div className="hint">No nominees are on the ballot yet.</div>
+      ) : (
+        <>
+          <div className="two-col">
+            <div className="field">
+              <label>Which posters</label>
+              <select value={scope} onChange={e => setScope(e.target.value)} disabled={busy}>
+                <option value="__all__">Everything ({cands.length})</option>
+                {groups.map(g => <option key={g} value={g}>{g} ({countFor(g)})</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Format</label>
+              <select value={fmt} onChange={e => setFmt(e.target.value)} disabled={busy}>
+                <option value="png">PNG — best quality, larger files</option>
+                <option value="jpg">JPG — smaller files</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-gold" style={{ flex: 1, justifyContent: 'center' }} onClick={run} disabled={busy}>
+              {busy ? (prog.zipping ? 'Packing the ZIP…' : `Making posters… ${prog.done}/${prog.total}`) : '⬇ Download posters (.zip)'}
+            </button>
+            {busy && !prog.zipping && <button className="btn btn-outline-dark" onClick={() => { cancelRef.current = true; }}>Cancel</button>}
+          </div>
+          {prog && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ height: 8, borderRadius: 6, background: 'var(--panel-2)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round((prog.done / Math.max(prog.total, 1)) * 100)}%`, background: 'var(--gold, #c9a227)', transition: 'width .2s' }} />
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                {busy ? (prog.name ? `Now making: ${prog.name}` : 'Working…')
+                  : prog.fatal ? `Stopped: ${prog.fatal}`
+                  : prog.cancelled ? 'Cancelled — nothing was downloaded.'
+                  : prog.made ? `Done — ${prog.made} poster${prog.made === 1 ? '' : 's'} in the ZIP.` : ''}
+              </div>
+              {prog.failed && prog.failed.length > 0 && (
+                <div className="banner banner-bad" style={{ marginTop: 8, display: 'block', fontSize: 12.5 }}>
+                  <strong>{prog.failed.length} poster{prog.failed.length === 1 ? '' : 's'} could not be made</strong> (the rest are in the ZIP). Run the export again later, or use that nominee's own Poster button:
+                  <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>{prog.failed.slice(0, 15).map((f, i) => <li key={i}>{f}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -940,7 +1132,6 @@ export function ExtraSettings() {
         votePriceGHS: Number(config.vote_price_ghs) || 1,
         votingOpenDate: config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : null,
         votingCloseDate: config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : null,
-        votingCloseTime: config.voting_close_time,
         maxVotesPerPurchase: parseInt(config.max_votes_per_purchase) || 500,
         ussdShortcode: config.ussd_shortcode || null,
         posterBgUrl: config.poster_bg_url || null,
@@ -1013,12 +1204,8 @@ export function ExtraSettings() {
       <div className="two-col">
         <div className="field"><label>Voting opens</label>
           <input type="text" placeholder="YYYY-MM-DD" value={config.voting_open_date ? String(config.voting_open_date).slice(0, 10) : ''} onChange={e => set('voting_open_date', e.target.value)} /></div>
-        <div className="field"><label>Voting closes (date and time)</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input type="text" placeholder="YYYY-MM-DD" style={{ flex: '1 1 60%' }} value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} />
-            <input type="time" style={{ flex: '1 1 40%' }} value={config.voting_close_time || ''} onChange={e => set('voting_close_time', e.target.value)} />
-          </div>
-          <div className="hint">Time is Ghana time (GMT). Leave the time blank to close at the end of that day. The countdown and the real cut-off both use it.</div></div>
+        <div className="field"><label>Voting closes</label>
+          <input type="text" placeholder="YYYY-MM-DD" value={config.voting_close_date ? String(config.voting_close_date).slice(0, 10) : ''} onChange={e => set('voting_close_date', e.target.value)} /></div>
       </div>
       <div className="two-col">
         <div className="field"><label>Price per single vote (GH₵)</label>

@@ -1,5 +1,4 @@
 import { sql } from '@/lib/db';
-import { votingCloseAt } from '@/lib/closing';
 import { initializeTransaction, paystackConfigured } from '@/lib/paystack';
 import { newVoteReference } from '@/lib/votes';
 
@@ -21,8 +20,7 @@ export async function POST(req) {
   if (cfg.voting_open_date && now < new Date(String(cfg.voting_open_date).slice(0, 10))) {
     return Response.json({ error: 'Voting has not opened yet.' }, { status: 400 });
   }
-  const closeAt = votingCloseAt(cfg);
-  if (closeAt && now > closeAt) {
+  if (cfg.voting_close_date && now > new Date(String(cfg.voting_close_date).slice(0, 10) + 'T23:59:59')) {
     return Response.json({ error: 'Voting has closed.' }, { status: 400 });
   }
 

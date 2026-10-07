@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast, CandidateSearch } from '../components';
 import { useNow, fmtRemaining } from '../countdown';
-import { votingCloseAt, fmtCloseTime } from '../../lib/closing';
 
 const VOTER_KEY = 'ora_voter';
 
@@ -82,8 +81,8 @@ export default function VotePage() {
     if (config.voting_enabled === false) closedMsg = 'Voting is not open right now.';
     else if (config.voting_open_date && now < new Date(String(config.voting_open_date).slice(0, 10))) {
       closedMsg = `Voting opens on ${fmtDate(config.voting_open_date)}.`;
-    } else if (votingCloseAt(config) && now > votingCloseAt(config)) {
-      closedMsg = `Voting closed on ${fmtDate(config.voting_close_date)}${fmtCloseTime(config) ? ' at ' + fmtCloseTime(config) : ''}. Thank you for your support!`;
+    } else if (config.voting_close_date && now > new Date(String(config.voting_close_date).slice(0, 10) + 'T23:59:59')) {
+      closedMsg = `Voting closed on ${fmtDate(config.voting_close_date)}. Thank you for your support!`;
     }
   }
 
@@ -136,13 +135,13 @@ export default function VotePage() {
           </div>
 
           {!closedMsg && config?.voting_close_date && config.show_countdown !== false && (() => {
-            const left = votingCloseAt(config).getTime() - nowMs;
+            const left = new Date(String(config.voting_close_date).slice(0, 10) + 'T23:59:59').getTime() - nowMs;
             const txt = fmtRemaining(left);
             if (!txt) return null;
             const final = left < 48 * 3600 * 1000;
             return (
               <div className="banner banner-gold" style={{ marginBottom: 20, fontWeight: final ? 700 : 500 }}>
-                ⏳ Voting closes in <strong style={{ margin: '0 4px' }}>{txt}</strong>{fmtCloseTime(config) ? <span style={{ fontWeight: 400, fontSize: 13 }}>({fmtDate(config.voting_close_date)}, {fmtCloseTime(config)} GMT)</span> : null}{final ? ' — final hours, make every vote count!' : ''}
+                ⏳ Voting closes in <strong style={{ margin: '0 4px' }}>{txt}</strong>{final ? ' — final hours, make every vote count!' : ''}
               </div>
             );
           })()}

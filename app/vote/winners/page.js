@@ -6,11 +6,9 @@ import { Shell, Toast } from '../../components';
 // (ties show everyone on the top rank). No scores, no totals, no money.
 export default function WinnersPage() {
   const [candidates, setCandidates] = useState(null);
-  const [mode, setMode] = useState(null);
-  const [rankHidden, setRankHidden] = useState(false);
 
   useEffect(() => {
-    fetch('/api/candidates').then(r => r.json()).then(d => { setMode(d.mode); setRankHidden(!!d.rankHidden); setCandidates(d.candidates || []); }).catch(() => setCandidates([]));
+    fetch('/api/candidates').then(r => r.json()).then(d => setCandidates(d.candidates || [])).catch(() => setCandidates([]));
   }, []);
 
   const sections = {};
@@ -38,10 +36,6 @@ export default function WinnersPage() {
 
           {candidates === null ? (
             <p style={{ color: 'var(--ink-soft)' }}>Loading…</p>
-          ) : rankHidden ? (
-            <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>
-              🔒 Winners will be announced at the Oguaa Royal Awards Night.
-            </div>
           ) : candidates.length === 0 ? (
             <div className="panel panel-pad" style={{ textAlign: 'center', color: 'var(--ink-soft)' }}>No candidates on the ballot yet.</div>
           ) : Object.keys(sections).map(section => (

@@ -9,12 +9,10 @@ export default function NomineePosterPage({ params }) {
   const [shortcode, setShortcode] = useState(null);
   const [bgUrl, setBgUrl] = useState(null);
   const [downloading, setDownloading] = useState(false);
-  const [rankHidden, setRankHidden] = useState(false);
 
   useEffect(() => {
     fetch('/api/candidates').then(r => r.json()).then(d => {
       const match = (d.candidates || []).find(c => c.ballot_code === code);
-      setRankHidden(!!d.rankHidden);
       setCandidate(match || null);
     }).catch(() => setCandidate(null));
     fetch('/api/public/summary').then(r => r.json()).then(d => {
@@ -78,9 +76,7 @@ export default function NomineePosterPage({ params }) {
           {candidate && (
             <>
               <div className="panel panel-pad" style={{ marginBottom: 16, textAlign: 'center' }}>
-                {rankHidden ? (
-                  <div style={{ fontSize: 14 }}>Voting is on in {candidate.award_name}. Results stay private until the awards night, so share your poster and keep the votes coming!</div>
-                ) : candidate.rank ? (
+                {candidate.rank ? (
                   <>
                     <div style={{ fontSize: 13, color: 'var(--ink-soft)' }}>Right now in {candidate.award_name}</div>
                     <div style={{ fontSize: 26, fontWeight: 800, margin: '4px 0' }}>

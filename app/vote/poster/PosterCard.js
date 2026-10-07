@@ -98,14 +98,14 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
         {/* Content layer */}
         <div style={{
           position: 'relative', width: '100%', height: '100%', boxSizing: 'border-box',
-          display: 'flex', flexDirection: 'column', padding: '20px 22px 14px',
+          display: 'flex', flexDirection: 'column', padding: '16px 22px 12px',
         }}>
 
           {/* Header: logo, then the event name */}
-          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, height: 46 }}>
-            <img src="/logo-mark.png" alt="" style={{ height: 44, width: 'auto', objectFit: 'contain', borderRadius: 4 }} />
+          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, height: 42 }}>
+            <img src="/logo-mark.png" alt="" style={{ height: 40, width: 'auto', objectFit: 'contain', borderRadius: 4 }} />
             <div style={{
-              fontFamily: "'Playfair Display', serif", fontSize: 27, fontWeight: 700, lineHeight: 1.05,
+              fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 700, lineHeight: 1.05,
               color: 'var(--gold-light)', letterSpacing: 0.4, textShadow: '0 2px 8px rgba(0,0,0,0.75)',
             }}>
               Oguaa Royal Awards
@@ -113,14 +113,14 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
           </div>
 
           {/* Main: name + steps (left), oval photo + QR (right) */}
-          <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', gap: 14, marginTop: 10 }}>
+          <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', gap: 14, marginTop: 8 }}>
 
             <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0, paddingBottom: 8 }}>
-                <h2 style={{ margin: '0 0 8px', fontSize: 27, lineHeight: 1.15, color: '#fff', textShadow: '0 2px 10px rgba(0,0,0,0.8)' }}>
+                <h2 style={{ margin: '0 0 8px', fontSize: nameSize(candidate.nominee_name), lineHeight: 1.12, color: '#fff', textShadow: '0 2px 10px rgba(0,0,0,0.8)', overflowWrap: 'anywhere' }}>
                   {candidate.nominee_name}
                 </h2>
-                <div style={{ alignSelf: 'flex-start', background: PANEL, border: PANEL_BORDER, color: 'var(--gold-light)', fontSize: 15, fontWeight: 700, padding: '5px 14px', borderRadius: 999 }}>
+                <div style={{ alignSelf: 'flex-start', background: PANEL, border: PANEL_BORDER, color: 'var(--gold-light)', fontSize: 16, fontWeight: 700, padding: '5px 14px', borderRadius: 999, lineHeight: 1.2 }}>
                   {candidate.award_name}
                 </div>
               </div>
@@ -132,7 +132,7 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
                 </div>
                 <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {steps.map((s, i) => (
-                    <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 16, lineHeight: 1.2, color: 'var(--parchment)' }}>
+                    <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, lineHeight: 1.2, color: 'var(--parchment)' }}>
                       <span style={{
                         flex: '0 0 auto', width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 14, fontWeight: 800, color: 'var(--royal-3)', background: GOLD_TEXT,
@@ -144,8 +144,8 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
               </div>
             </div>
 
-            <div style={{ flex: '0 0 auto', width: 158, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ width: 150, height: 186, borderRadius: '50%', padding: 6, boxSizing: 'border-box', background: GOLD_TEXT, boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}>
+            <div style={{ flex: '0 0 auto', width: 180, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ width: 176, height: 214, borderRadius: '50%', padding: 6, boxSizing: 'border-box', background: GOLD_TEXT, boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}>
                 {candidate.photo_url ? (
                   <img
                     src={candidate.photo_url}
@@ -156,15 +156,15 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
                   <div style={{
                     width: '100%', height: '100%', borderRadius: '50%', border: '4px solid var(--royal-3)', boxSizing: 'border-box',
                     background: 'var(--royal-2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontFamily: "'Playfair Display', serif", fontSize: 44, fontWeight: 700, color: 'var(--gold-light)',
+                    fontFamily: "'Playfair Display', serif", fontSize: 52, fontWeight: 700, color: 'var(--gold-light)',
                   }}>
                     {initials(candidate.nominee_name)}
                   </div>
                 )}
               </div>
 
-              <div style={{ width: 158, boxSizing: 'border-box', background: '#fff', borderRadius: 16, padding: '8px 8px 7px', textAlign: 'center' }}>
-                <img src={qrSrc} alt="Scan to vote online" width={100} height={100} style={{ display: 'block', margin: '0 auto', borderRadius: 5 }} />
+              <div style={{ width: 180, boxSizing: 'border-box', background: '#fff', borderRadius: 16, padding: '8px 8px 7px', textAlign: 'center' }}>
+                <img src={qrSrc} alt="Scan to vote online" width={94} height={94} style={{ display: 'block', margin: '0 auto', borderRadius: 5 }} />
                 <div style={{ fontSize: 12.5, color: 'var(--royal-3)', marginTop: 3, fontWeight: 800 }}>scan to vote online</div>
                 <div style={{ fontSize: 11, color: 'var(--royal-3)', fontWeight: 600 }}>{siteHost}</div>
               </div>
@@ -172,13 +172,13 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
           </div>
 
           {/* Nominee code */}
-          <div style={{ flex: '0 0 auto', marginTop: 10, display: 'flex', alignItems: 'center', gap: 14, background: PANEL, border: PANEL_BORDER, borderRadius: 16, padding: '7px 10px 7px 16px' }}>
+          <div style={{ flex: '0 0 auto', marginTop: 10, display: 'flex', alignItems: 'center', gap: 14, background: PANEL, border: PANEL_BORDER, borderRadius: 16, padding: '6px 10px 6px 16px' }}>
             <div style={{ fontSize: 14, letterSpacing: 1.6, textTransform: 'uppercase', color: 'var(--gold-light)', fontWeight: 800, lineHeight: 1.25 }}>
               Nominee<br />code
             </div>
             <div style={{
               flex: '1 1 auto', textAlign: 'center',
-              fontFamily: "'JetBrains Mono', monospace", fontWeight: 800, fontSize: 40, letterSpacing: 6, lineHeight: 1.1,
+              fontFamily: "'JetBrains Mono', monospace", fontWeight: 800, fontSize: 38, letterSpacing: 6, lineHeight: 1.1,
               color: 'var(--royal-3)', background: GOLD_TEXT, borderRadius: 11, padding: '4px 4px',
             }}>
               {candidate.ballot_code}
@@ -186,13 +186,24 @@ export default function PosterCard({ candidate, voteUrl, shortcode, bgUrl }) {
           </div>
 
           {/* Bottom: call to action */}
-          <div style={{ flex: '0 0 auto', marginTop: 9, textAlign: 'center', fontSize: 14, letterSpacing: 2.6, textTransform: 'uppercase', color: 'var(--gold-light)', fontWeight: 800, textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
+          <div style={{ flex: '0 0 auto', marginTop: 7, textAlign: 'center', fontSize: 14, letterSpacing: 2.6, textTransform: 'uppercase', color: 'var(--gold-light)', fontWeight: 800, textShadow: '0 1px 6px rgba(0,0,0,0.6)' }}>
             Vote Now — Every Vote Counts
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+// Bigger names for short ones, stepping down so a very long name still wraps
+// inside its column instead of crowding the how-to-vote panel.
+function nameSize(name) {
+  const n = String(name || '').trim().length;
+  if (n <= 14) return 40;
+  if (n <= 22) return 36;
+  if (n <= 30) return 32;
+  if (n <= 40) return 28;
+  return 24;
 }
 
 // "Yahaya Dabre Zulaiha" -> "YD" — a same simple two-initial fallback used

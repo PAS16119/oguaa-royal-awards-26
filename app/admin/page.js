@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useRouter } from 'next/navigation';
 import { Shell, Seal, Toast, toast } from '../components';
-import { AwardsTab, PaymentsTab, ExtraSettings, CoAdminsTab, VotingTab } from './manage';
+import { AwardsTab, PaymentsTab, ExtraSettings, CoAdminsTab, VotingTab, BulkPosterExport } from './manage';
 
 function sanitizeFile(s) {
   return (s || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 60);
@@ -673,6 +673,7 @@ function ExportTab() {
   }
 
   return (
+    <>
     <div className="two-col">
       <div className="panel panel-pad">
         <h3 style={{ marginTop: 0 }}>Export nomination list</h3>
@@ -685,6 +686,8 @@ function ExportTab() {
         <button className="btn btn-dark" style={{ width: '100%', justifyContent: 'center' }} onClick={exportPhotosZip}>⬇ Download photos (.zip)</button>
       </div>
     </div>
+    <div style={{ marginTop: 16 }}><BulkPosterExport /></div>
+    </>
   );
 }
 
