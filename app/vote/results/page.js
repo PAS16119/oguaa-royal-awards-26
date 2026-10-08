@@ -5,7 +5,7 @@ import { Shell, Toast, CandidateSearch } from '../../components';
 const MODE_NOTE = {
   hidden: 'Results are being kept private until the winners are announced.',
   closed: 'Showing the current ranking in each category.',
-  shuffled: 'Not a ranking. Nominees who have received votes are shown in a shuffled order — nominees still waiting for their first vote are listed last. Every vote can move you into the race!',
+  shuffled: '',
   percent: 'Each nominee’s share of the votes in their category. Updated live.',
   full: 'Votes per nominee in each category. Updated the moment a vote is confirmed.',
 };
